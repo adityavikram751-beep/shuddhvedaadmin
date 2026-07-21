@@ -297,10 +297,13 @@ export default function ReportsAnalyticsPage() {
 
             <div className="w-full h-72 pt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={activeData.salesTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart
+                  data={activeData.salesTrend}
+                  margin={{ top: 10, right: 15, left: 15, bottom: 0 }}
+                >
                   <defs>
                     <linearGradient id="amberAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#D97706" stopOpacity={0.15} />
+                      <stop offset="5%" stopColor="#D97706" stopOpacity={0.18} />
                       <stop offset="95%" stopColor="#D97706" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
@@ -311,19 +314,31 @@ export default function ReportsAnalyticsPage() {
                     dataKey="month"
                     axisLine={false}
                     tickLine={false}
+                    padding={{ left: 10, right: 10 }}
                     tick={{ fill: "#64748B", fontSize: 10, fontWeight: "700" }}
                   />
 
                   <YAxis hide />
 
+                  {/* 🎯 Custom Styled Visible Tooltip */}
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "#0F172A",
-                      borderRadius: "12px",
+                      borderRadius: "14px",
                       border: "none",
-                      color: "#FFFFFF",
-                      fontSize: "12px",
+                      boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.3)",
+                      padding: "10px 14px",
+                    }}
+                    labelStyle={{
+                      color: "#94A3B8",
+                      fontSize: "11px",
                       fontWeight: "bold",
+                      marginBottom: "2px",
+                    }}
+                    itemStyle={{
+                      color: "#F59E0B",
+                      fontSize: "13px",
+                      fontWeight: "900",
                     }}
                     formatter={(value: any) => [`₹${Number(value).toLocaleString()}`, "Revenue"]}
                   />
@@ -358,24 +373,39 @@ export default function ReportsAnalyticsPage() {
 
             <div className="w-full h-72 pt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={activeData.ordersOverview} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart
+                  data={activeData.ordersOverview}
+                  margin={{ top: 10, right: 15, left: 15, bottom: 0 }}
+                >
                   <XAxis
                     dataKey="month"
                     axisLine={false}
                     tickLine={false}
+                    padding={{ left: 10, right: 10 }}
                     tick={{ fill: "#64748B", fontSize: 10, fontWeight: "700" }}
                   />
 
                   <YAxis hide />
 
+                  {/* 🎯 Custom Styled Visible Tooltip */}
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "#0F172A",
-                      borderRadius: "12px",
+                      borderRadius: "14px",
                       border: "none",
-                      color: "#FFFFFF",
-                      fontSize: "12px",
+                      boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.3)",
+                      padding: "10px 14px",
+                    }}
+                    labelStyle={{
+                      color: "#94A3B8",
+                      fontSize: "11px",
                       fontWeight: "bold",
+                      marginBottom: "2px",
+                    }}
+                    itemStyle={{
+                      color: "#F59E0B",
+                      fontSize: "13px",
+                      fontWeight: "900",
                     }}
                     formatter={(value: any) => [`${value} Orders`, "Volume"]}
                   />

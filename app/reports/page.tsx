@@ -4,7 +4,7 @@ import { useState } from "react";
 import Sidebar from "@/app/components/sidebar";
 import Header from "@/app/components/Header";
 import Reports from "@/app/components/reports/page";
-import Report from "@/app/components/reports/report"
+
 
 
 export default function Order() {
@@ -22,7 +22,6 @@ export default function Order() {
 
         <main className="flex-1 p-6">
    <Reports/>
-  <Report/>
         </main>
       </div>
     </div>
