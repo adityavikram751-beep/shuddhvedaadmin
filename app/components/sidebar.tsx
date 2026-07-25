@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -18,8 +18,14 @@ import {
   HelpCircle,
   LogOut,
   ChevronRight,
+  ChevronDown,
   X,
 } from "lucide-react";
+
+interface SubNavItem {
+  label: string;
+  href: string;
+}
 
 interface NavItem {
   label: string;
@@ -27,12 +33,25 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   chevron: boolean;
   keyword: string; // used for robust "am I active" matching on nested routes
+  subItems?: SubNavItem[];
 }
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, chevron: false, keyword: "dashboard" },
   { label: "Orders", href: "/order", icon: ShoppingBag, chevron: true, keyword: "order" },
-  { label: "Products", href: "/product", icon: Package, chevron: true, keyword: "product" },
+  {
+    label: "Products",
+    href: "/product",
+    icon: Package,
+    chevron: true,
+    keyword: "product",
+    subItems: [
+      { label: "Product List", href: "/product" },
+      { label: "Add Product", href: "/product/addproduct" },
+      { label: "Add Category", href: "/product/productcontent" },
+
+    ],
+  },
   { label: "Inventory", href: "/inventory", icon: Archive, chevron: true, keyword: "inventory" },
   { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
   { label: "Promotions", href: "/promotion", icon: Tag, chevron: true, keyword: "promotion" },
@@ -57,6 +76,15 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const handleLogout = () => {
+    // Clear any stored auth/session data here if needed, e.g.:
+    // localStorage.removeItem("token");
+    onClose();
+    router.push("/login");
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -68,6 +96,23 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       document.body.style.overflow = "";
     };
   }, [isOpen]);
+
+  // Auto-expand the group that matches the current route (e.g. keep
+  // "Products" open when on /product/add) so the dropdown state stays in
+  // sync with navigation instead of resetting.
+  useEffect(() => {
+    const active = navItems.find((item) => item.subItems && isNavItemActive(pathname, item));
+    setExpanded(active ? active.label : null);
+  }, [pathname]);
+
+  const handleParentClick = (item: NavItem, e: React.MouseEvent) => {
+    if (item.subItems && item.subItems.length > 0) {
+      e.preventDefault();
+      setExpanded((prev) => (prev === item.label ? null : item.label));
+    } else {
+      onClose();
+    }
+  };
 
   return (
     <>
@@ -126,26 +171,70 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 space-y-1">
           {navItems.map((item) => {
-            const { label, href, icon: Icon, chevron } = item;
+            const { label, href, icon: Icon, chevron, subItems } = item;
             const isActive = isNavItemActive(pathname, item);
+            const isExpanded = expanded === label;
+            const hasSubItems = !!subItems && subItems.length > 0;
+
             return (
-              <Link
-                key={label}
-                href={href}
-                onClick={onClose}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                  ${
-                    isActive
-                      ? "bg-orange-50 text-orange-500"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-              >
-                <span className="flex items-center gap-3">
-                  <Icon size={18} />
-                  {label}
-                </span>
-                {chevron && <ChevronRight size={16} className="text-gray-300" />}
-              </Link>
+              <div key={label}>
+                <Link
+                  href={href}
+                  onClick={(e) => handleParentClick(item, e)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                    ${
+                      isActive
+                        ? "bg-orange-50 text-orange-500"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon size={18} />
+                    {label}
+                  </span>
+                  {chevron &&
+                    (hasSubItems ? (
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-400 transition-transform duration-200 ${
+                          isExpanded ? "rotate-180" : ""
+                        }`}
+                      />
+                    ) : (
+                      <ChevronRight size={16} className="text-gray-300" />
+                    ))}
+                </Link>
+
+                {/* Dropdown sub-items */}
+                {hasSubItems && (
+                  <div
+                    className={`overflow-hidden transition-all duration-200 ease-in-out ${
+                      isExpanded ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"
+                    }`}
+                  >
+                    <div className="ml-6 pl-3 border-l border-gray-100 space-y-1">
+                      {subItems!.map((sub) => {
+                        const isSubActive = pathname.toLowerCase() === sub.href.toLowerCase();
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            onClick={onClose}
+                            className={`block px-3 py-2 rounded-lg text-sm transition-colors
+                              ${
+                                isSubActive
+                                  ? "text-orange-500 font-medium bg-orange-50"
+                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                              }`}
+                          >
+                            {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -156,7 +245,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <HelpCircle size={18} />
             Help Center
           </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50"
+          >
             <LogOut size={18} />
             Logout
           </button>
