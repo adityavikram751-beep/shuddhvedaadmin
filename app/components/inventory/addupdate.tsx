@@ -1,31 +1,62 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Download,
-  ChevronRight,
+  ArrowLeft,
+  Calendar,
   ChevronDown,
-  Clock,
-  Check,
+  Info,
+  RotateCcw,
+  Save,
+  Loader2,
   CheckCircle2,
-  ArrowRight,
+  Package,
+  Layers,
+  Calculator,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/auth";
 
-export default function UpdateStockPage() {
+interface SelectedVariantData {
+  variantId: string;
+  weight: number | string;
+  unit: string;
+  sku: string;
+  available_stock: number;
+  price: string | number;
+  mrp: string | number;
+  low_stock_alert: number;
+}
+
+function UpdateStockFormContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Current Base Stock
-  const currentStock = 42;
+  // URL Params
+  const productId = searchParams.get("productId") || searchParams.get("id") || "";
+  const targetVariantId = searchParams.get("variantId") || "";
 
-  // --- Form States ---
-  const [updateType, setUpdateType] = useState<"add" | "remove">("add");
-  const [quantity, setQuantity] = useState<string>("");
-  const [reason, setReason] = useState<string>("");
-  const [reference, setReference] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
+  // States
+  const [activeVariant, setActiveVariant] = useState<SelectedVariantData | null>(null);
+  const [productMeta, setProductMeta] = useState({
+    name: "Mustard Honey",
+    category: "Mustard Honey",
+    image: "",
+  });
 
-  // Toast Notification State
+  // Inputs State
+  const [addQuantity, setAddQuantity] = useState<string>("0");
+  const [updateDate, setUpdateDate] = useState<string>(
+    new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+  );
+  const [reason, setReason] = useState<string>("New Stock Arrived");
+
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -33,391 +64,482 @@ export default function UpdateStockPage() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Calculate New Stock dynamically
-  const parsedQty = parseInt(quantity, 10);
-  const isValidQty = !isNaN(parsedQty) && parsedQty > 0;
+  // 🌐 1. FETCH PRODUCT & VARIANT DETAILS FROM STOCK LIST
+  useEffect(() => {
+    const loadSpecificVariant = async () => {
+      if (!productId) {
+        setFetching(false);
+        return;
+      }
 
-  let calculatedNewStock = currentStock;
-  if (isValidQty) {
-    calculatedNewStock =
-      updateType === "add"
-        ? currentStock + parsedQty
-        : Math.max(0, currentStock - parsedQty);
+      setFetching(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/dashboard/stock-list`, {
+          method: "GET",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
+        const data = await res.json();
+        const rawItems = data.data || [];
+
+        if (Array.isArray(rawItems) && rawItems.length > 0) {
+          const matchedProduct =
+            rawItems.find(
+              (item: any) =>
+                item.productId === productId || item._id === productId
+            ) || rawItems[0];
+
+          if (matchedProduct) {
+            let categoryName = "Honey";
+            if (typeof matchedProduct.category === "string") {
+              categoryName = matchedProduct.category;
+            } else if (
+              matchedProduct.category &&
+              typeof matchedProduct.category === "object"
+            ) {
+              categoryName =
+                matchedProduct.category.category_name ||
+                matchedProduct.category.name ||
+                "Honey";
+            }
+
+            let imgUrl =
+              matchedProduct.image?.image_url || matchedProduct.image_url || "";
+            if (
+              typeof imgUrl === "string" &&
+              imgUrl &&
+              !imgUrl.startsWith("http") &&
+              !imgUrl.startsWith("data:")
+            ) {
+              imgUrl = `${API_BASE_URL}/${imgUrl.replace(/^\//, "")}`;
+            }
+
+            setProductMeta({
+              name: matchedProduct.product_name || "Untitled Product",
+              category: categoryName,
+              image: typeof imgUrl === "string" ? imgUrl : "",
+            });
+
+            const rawVars: any[] = Array.isArray(matchedProduct.variants)
+              ? matchedProduct.variants
+              : [];
+
+            const matchedVariant =
+              rawVars.find(
+                (v: any) =>
+                  v.variantId === targetVariantId || v._id === targetVariantId
+              ) ||
+              rawVars[0] ||
+              {};
+
+            setActiveVariant({
+              variantId: matchedVariant.variantId || matchedVariant._id || targetVariantId,
+              weight: matchedVariant.weight || "500",
+              unit: matchedVariant.unit || "g",
+              sku: matchedVariant.sku || "N/A",
+              available_stock: Number(matchedVariant.available_stock ?? 0),
+              price:
+                matchedVariant.price !== undefined && matchedVariant.price !== null
+                  ? String(matchedVariant.price)
+                  : "",
+              mrp:
+                matchedVariant.mrp !== undefined && matchedVariant.mrp !== null
+                  ? String(matchedVariant.mrp)
+                  : "",
+              low_stock_alert: Number(matchedVariant.low_stock_alert ?? 2),
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load stock list data:", err);
+      } finally {
+        setFetching(false);
+      }
+    };
+
+    loadSpecificVariant();
+  }, [productId, targetVariantId]);
+
+  // Stock Calculations
+  const currentStock = activeVariant ? Number(activeVariant.available_stock) : 0;
+  const parsedAddQty = parseInt(addQuantity, 10);
+  const validAddQty = !isNaN(parsedAddQty) && parsedAddQty >= 0 ? parsedAddQty : 0;
+  const calculatedTotalStock = currentStock + validAddQty;
+
+  const handleReset = () => {
+    setAddQuantity("0");
+    setReason("New Stock Arrived");
+  };
+
+  // 🌐 2. PUT API CALL TO UPDATE VARIANT STOCK
+  const handleSaveStock = async () => {
+    if (!productId || !activeVariant?.variantId) {
+      showToast("Error: Product ID or Variant ID is missing!");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // 🎯 Backend khud additive calculation kar raha hai, isiliye sirf validAddQty bhej rahe hain
+      const payload = {
+        price: activeVariant.price !== undefined && activeVariant.price !== null ? String(activeVariant.price) : "",
+        mrp: activeVariant.mrp !== undefined && activeVariant.mrp !== null ? String(activeVariant.mrp) : "",
+        updated_stock: validAddQty,
+      };
+
+      const targetUrl = `${API_BASE_URL}/api/products/${productId}/stock/${activeVariant.variantId}`;
+
+      console.log("Submitting PUT to:", targetUrl);
+      console.log("Payload:", payload);
+
+      const res = await fetch(targetUrl, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${res.status}: Failed to update variant stock`);
+      }
+
+      showToast(`Stock updated for ${activeVariant.weight}${activeVariant.unit}!`);
+
+      setTimeout(() => {
+        router.push(
+          `/inventory/complete?productId=${productId}&variantId=${activeVariant.variantId}&addedQty=${validAddQty}&prevStock=${currentStock}&newStock=${calculatedTotalStock}`
+        );
+      }, 500);
+    } catch (err: any) {
+      console.error("PUT Request Error:", err);
+      showToast(err.message || "Failed to save stock update");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (fetching) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center gap-2">
+        <Loader2 size={32} className="animate-spin text-[#214b21]" />
+        <p className="text-xs font-bold text-slate-600">Loading Variant Details...</p>
+      </div>
+    );
   }
 
-  // --- Working Submit Handler (Redirects to Success Page) ---
-  const handleUpdateStock = () => {
-    if (!isValidQty) {
-      showToast("Please enter a valid quantity!");
-      return;
-    }
-    if (!reason) {
-      showToast("Please select a reason!");
-      return;
-    }
-
-    showToast("🚀 Stock updated successfully!");
-    
-    // Save updated data to localStorage so Success Page can read it
-    const updatedData = {
-      productName: "Raw Honey 250g",
-      sku: "RH250",
-      updateType: updateType === "add" ? "Add Stock" : "Remove Stock",
-      quantityAdded: parsedQty,
-      previousStock: currentStock,
-      newStock: calculatedNewStock,
-      updatedOn: "07 Jul 2026, 10:35 AM",
-      updatedBy: "Admin User",
-    };
-    localStorage.setItem("last_stock_update", JSON.stringify(updatedData));
-
-    // Redirect to Stock Update Success Page
-    setTimeout(() => {
-      router.push("/inventory/complete");
-    }, 800);
-  };
-
-  // Export CSV Handler
-  const handleExport = () => {
-    const csvContent =
-      "data:text/csv;charset=utf-8,Product,SKU,Current Stock,Warehouse\nRaw Honey 250g,RH250,42,Main Warehouse";
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `stock_update_RH250.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast("Exported stock summary!");
-  };
-
   return (
-    <div className="min-h-screen  text-slate-800 font-sans pb-16">
-      
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans p-4 sm:p-6 md:p-8 pb-24">
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2">
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2">
           <CheckCircle2 size={16} className="text-emerald-400" />
           {toastMsg}
         </div>
       )}
 
-      <div className="max-w-[1320px] mx-auto px-4 sm:px-6 pt-6 space-y-6">
-        
-        {/* BREADCRUMB & PAGE HEADER */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="max-w-[1180px] mx-auto space-y-6">
+        {/* HEADER */}
+        <div className="flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-1">
-             
-              <span
-                className="hover:text-slate-600 cursor-pointer"
-                onClick={() => router.push("/inventory")}
-              >
-                Inventory
-              </span>
-              <ChevronRight size={12} />
-              <span
-                className="hover:text-slate-600 cursor-pointer"
-                onClick={() => router.push("/inventory/details")}
-              >
-                Inventory Details
-              </span>
-              <ChevronRight size={12} />
-              <span className="text-slate-800 font-bold">Update Stock</span>
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-2xl md:text-3xl font-bold text-[#0F172A] tracking-tight">
               Update Stock
             </h1>
-            <p className="text-xs font-medium text-slate-400 mt-0.5">
-              Manage stock levels and inventory for all products.
+            <p className="text-xs md:text-sm text-[#64748B] font-medium mt-1">
+              Add new stock to update total available quantity for this variant.
             </p>
           </div>
 
-          <div>
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-sm"
-            >
-              <Download size={14} className="text-slate-500" />
-              Export
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors shadow-xs cursor-pointer"
+          >
+            <ArrowLeft size={14} />
+            Back to Details
+          </button>
         </div>
 
-        {/* 1. PRODUCT SUMMARY TOP CARD */}
-        <div className="bg-white rounded-3xl border border-slate-200/60 p-6 shadow-sm flex flex-col md:flex-row gap-6 items-start md:items-center">
+        {/* MAIN GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Product Thumbnail */}
-          <div className="w-24 h-24 rounded-2xl bg-[#faf8f5] border border-slate-200/80 p-2 shrink-0 flex items-center justify-center overflow-hidden">
-            <img
-              src="https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=500&auto=format&fit=crop&q=80"
-              alt="Raw Honey 250g"
-              className="w-full h-full object-contain rounded-xl"
-            />
-          </div>
-
-          {/* Product Quick Meta Info */}
-          <div className="flex-1 space-y-3 w-full">
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-black text-slate-900">Raw Honey 250g</h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-[#e8f8ee] text-[#16a34a] text-[10px] font-extrabold tracking-wide">
-                In Stock
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-6 text-xs">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">SKU</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">RH250</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">WAREHOUSE</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">Main Warehouse</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">CATEGORY</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">Honey</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">CURRENT STOCK</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">{currentStock} Units</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">BATCH NO.</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">BATCH2507</p>
-              </div>
-
-              <div className="col-span-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">LAST UPDATED</p>
-                <p className="font-extrabold text-slate-800 mt-0.5">07 Jul 2026, 10:30 AM</p>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 2. UPDATE STOCK INFORMATION FORM CARD */}
-        <div className="bg-white rounded-3xl border border-slate-200/60 p-6 md:p-8 shadow-sm space-y-6">
-          <h2 className="text-sm font-extrabold text-slate-900">
-            Update Stock Information
-          </h2>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* LEFT COLUMN */}
+          <div className="lg:col-span-7 space-y-6">
             
-            {/* LEFT INPUT FIELDS (7 COLS) */}
-            <div className="lg:col-span-7 space-y-5">
-              
-              {/* Update Type (Add Stock / Remove Stock Radio) */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-2">
-                  Update Type <span className="text-red-500">*</span>
-                </label>
-                <div className="flex items-center gap-6">
-                  {/* Add Stock Option */}
-                  <label
-                    onClick={() => setUpdateType("add")}
-                    className="flex items-center gap-2 cursor-pointer select-none"
-                  >
-                    <div
-                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        updateType === "add"
-                          ? "border-[#d9730d] bg-[#d9730d]"
-                          : "border-slate-300"
-                      }`}
-                    >
-                      {updateType === "add" && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                      )}
-                    </div>
-                    <span className="text-xs font-bold text-slate-700">Add Stock</span>
-                  </label>
+            {/* Product Meta Card */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-50 text-[#D97706]">
+                  <Package size={18} />
+                </div>
+                <h3 className="text-sm font-bold text-[#0F172A]">Product Information</h3>
+              </div>
 
-                  {/* Remove Stock Option */}
-                  <label
-                    onClick={() => setUpdateType("remove")}
-                    className="flex items-center gap-2 cursor-pointer select-none"
-                  >
-                    <div
-                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        updateType === "remove"
-                          ? "border-[#d9730d] bg-[#d9730d]"
-                          : "border-slate-300"
-                      }`}
-                    >
-                      {updateType === "remove" && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                      )}
+              <div className="flex items-start sm:items-center gap-6">
+                <div className="w-28 h-28 rounded-2xl bg-[#F8FAFC] border border-slate-100 p-2 shrink-0 flex items-center justify-center overflow-hidden">
+                  {productMeta.image ? (
+                    <img
+                      src={productMeta.image}
+                      alt={productMeta.name}
+                      className="w-full h-full object-contain rounded-xl"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-xl bg-amber-50 flex items-center justify-center text-[#D97706] font-bold text-xs text-center p-2">
+                      {productMeta.name}
                     </div>
-                    <span className="text-xs font-bold text-slate-700">Remove Stock</span>
-                  </label>
+                  )}
+                </div>
+
+                <div className="space-y-3.5 flex-1">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      PRODUCT NAME
+                    </p>
+                    <p className="text-base font-black text-[#0F172A] mt-0.5">
+                      {productMeta.name}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      CATEGORY
+                    </p>
+                    <p className="text-xs font-bold text-slate-600 mt-0.5">
+                      {productMeta.category}
+                    </p>
+                  </div>
+
+                  {activeVariant && (
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        VARIANT / WEIGHT
+                      </p>
+                      <p className="text-xs font-black text-[#D97706] mt-0.5">
+                        {activeVariant.weight}{activeVariant.unit}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Stock Update Card */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-amber-50 text-[#D97706]">
+                    <Layers size={18} />
+                  </div>
+                  <h3 className="text-sm font-bold text-[#0F172A]">Stock Update</h3>
+                </div>
+
+                {activeVariant && (
+                  <span className="text-xs font-extrabold px-2.5 py-1 rounded-md bg-amber-50 text-[#D97706]">
+                    SKU: {activeVariant.sku}
+                  </span>
+                )}
+              </div>
+
+              {/* Current Stock Display */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700">
+                  Current Stock ({activeVariant ? `${activeVariant.weight}${activeVariant.unit}` : ""})
+                </span>
+                <span className="text-sm font-black text-[#0F172A]">
+                  {currentStock} Units
+                </span>
+              </div>
+
+              {/* Add Quantity Field */}
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs font-bold text-slate-700 shrink-0">
+                  Add Stock (Units)
+                </label>
+                <div className="w-48">
+                  <input
+                    type="number"
+                    value={addQuantity}
+                    onChange={(e) => setAddQuantity(e.target.value)}
+                    placeholder="0"
+                    min="0"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-right text-slate-900 focus:outline-none focus:border-[#214b21]"
+                  />
+                  <p className="text-[10px] text-slate-400 font-medium text-right mt-1">
+                    Enter quantity to add.
+                  </p>
                 </div>
               </div>
 
-              {/* Quantity Input */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Quantity <span className="text-red-500">*</span>
-                </label>
-                <div className="flex items-center rounded-xl border border-slate-200 overflow-hidden focus-within:border-[#d9730d]">
-                  <input
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="Enter quantity"
-                    min="1"
-                    className="w-full px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 bg-white"
-                  />
-                  <span className="px-4 py-2.5 bg-[#f7f5f2] border-l border-slate-200 text-xs font-bold text-slate-500 shrink-0">
-                    Units
+              {/* Total Calculated Stock Preview */}
+              <div className="pt-2">
+                <div className="bg-[#f0fdf4] border border-emerald-100 rounded-2xl p-5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black text-emerald-900">
+                      Total Stock (After Update)
+                    </p>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+                      <CheckCircle2 size={13} />
+                      <span>Automatically calculated</span>
+                    </div>
+                  </div>
+
+                  <span className="text-2xl font-black text-emerald-900">
+                    {calculatedTotalStock} Units
                   </span>
                 </div>
               </div>
+            </div>
 
-              {/* Reason Dropdown */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Reason <span className="text-red-500">*</span>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="lg:col-span-5 space-y-6">
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-50 text-[#D97706]">
+                  <Calendar size={18} />
+                </div>
+                <h3 className="text-sm font-bold text-[#0F172A]">Update Details</h3>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Update Date</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={updateDate}
+                    onChange={(e) => setUpdateDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#214b21]"
+                  />
+                  <Calendar
+                    size={15}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Reason <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 <div className="relative">
                   <select
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    className="w-full appearance-none px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:border-[#d9730d] cursor-pointer"
+                    className="w-full appearance-none px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-[#214b21] cursor-pointer"
                   >
-                    <option value="" disabled>
-                      Select reason
-                    </option>
-                    <option value="New Production">New Production / Batch</option>
-                    <option value="Stock Adjustment">Stock Audit Adjustment</option>
+                    <option value="New Stock Arrived">New Stock Arrived</option>
+                    <option value="Inventory Restock">Inventory Restock</option>
+                    <option value="Stock Audit Adjustment">Stock Audit Adjustment</option>
                     <option value="Customer Return">Customer Return</option>
-                    <option value="Damaged / Expired">Damaged / Expired Stock</option>
                   </select>
                   <ChevronDown
-                    size={14}
+                    size={16}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                   />
                 </div>
               </div>
 
-              {/* Reference Input */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Reference <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="Enter reference (e.g., PO no., Invoice no.)"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#d9730d] placeholder-slate-400"
-                />
-              </div>
-
-            </div>
-
-            {/* RIGHT DISPLAY CALCULATION & NOTES (5 COLS) */}
-            <div className="lg:col-span-5 space-y-5">
-              
-              {/* New Stock After Update Preview Box */}
-              <div>
-                <p className="text-[11px] font-bold text-slate-700 mb-2">
-                  New Stock After Update
-                </p>
-                
-                <div className="bg-[#fffcf7] rounded-2xl border border-amber-200/80 p-5 flex items-center justify-between text-center">
-                  
-                  {/* Current Base */}
-                  <div>
-                    <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-2xl font-black text-slate-900">{currentStock}</span>
-                      <span className="text-xs font-bold text-slate-500">Units</span>
-                    </div>
-                    <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mt-1">
-                      (CURRENT STOCK)
-                    </p>
-                  </div>
-
-                  {/* Arrow Icon */}
-                  <div className="text-[#d9730d]">
-                    <ArrowRight size={22} className="stroke-[2.5]" />
-                  </div>
-
-                  {/* Calculated After Update */}
-                  <div>
-                    {isValidQty ? (
-                      <div>
-                        <div className="flex items-baseline justify-center gap-1">
-                          <span className="text-2xl font-black text-[#d9730d]">
-                            {calculatedNewStock}
-                          </span>
-                          <span className="text-xs font-bold text-[#d9730d]">Units</span>
-                        </div>
-                        <p className="text-[9px] font-extrabold uppercase text-[#d9730d] tracking-wider mt-1">
-                          (AFTER UPDATE)
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-sm font-bold text-slate-400">Enter quantity</p>
-                        <p className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mt-1">
-                          (AFTER UPDATE)
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
+              <div className="bg-[#f0fdf4] border border-emerald-100 rounded-2xl p-4 flex items-start gap-3">
+                <Info size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-[11px] text-emerald-800 leading-relaxed font-medium">
+                  <p className="font-bold text-emerald-900">How it works</p>
+                  <p>Add the new quantity received for this variant. Total stock updates automatically.</p>
                 </div>
               </div>
-
-              {/* Notes Textarea */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Notes <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <textarea
-                  rows={4}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Enter notes about this stock update."
-                  className="w-full p-3.5 rounded-2xl border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#d9730d] placeholder-slate-400 leading-relaxed"
-                />
-              </div>
-
             </div>
 
-          </div>
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-50 text-[#D97706]">
+                  <Calculator size={18} />
+                </div>
+                <h3 className="text-sm font-bold text-[#0F172A]">Stock Calculation</h3>
+              </div>
 
-          {/* Warehouse Info Banner */}
-          <div className="bg-[#f0f7ff] border border-blue-100 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs text-blue-700 font-semibold">
-            <Clock size={16} className="text-blue-500 shrink-0" />
-            <span>Stock will be updated in Main Warehouse.</span>
-          </div>
+              <div className="space-y-3 pt-1 text-xs">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="font-medium">Current Stock</span>
+                  <span className="font-bold text-slate-900">{currentStock} Units</span>
+                </div>
 
-          {/* Bottom Action Footer */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-            <button
-              onClick={() => router.back()}
-              className="px-6 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-sm"
-            >
-              Cancel
-            </button>
+                <div className="flex justify-between items-center text-emerald-600">
+                  <span className="font-medium">Add Stock</span>
+                  <span className="font-bold">+ {validAddQty} Units</span>
+                </div>
 
-            <button
-              onClick={handleUpdateStock}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#d9730d] hover:bg-[#c06509] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
-            >
-              <Check size={15} className="stroke-[3]" />
-              Update Stock
-            </button>
+                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-slate-900">
+                  <span className="font-bold text-sm">Total Stock</span>
+                  <span className="font-black text-lg text-slate-900">
+                    {calculatedTotalStock} Units
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
 
+        {/* FOOTER ACTIONS */}
+        <div className="pt-4 flex items-center justify-between border-t border-slate-200/80">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="px-6 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors shadow-xs cursor-pointer"
+          >
+            Cancel
+          </button>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-amber-200 bg-[#FFFDF7] hover:bg-amber-50 text-xs font-bold text-[#D97706] transition-colors cursor-pointer"
+            >
+              <RotateCcw size={14} />
+              Reset
+            </button>
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleSaveStock}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#214b21] hover:bg-[#183b18] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-60"
+            >
+              {loading ? (
+                <Loader2 size={16} className="animate-spin text-white" />
+              ) : (
+                <Save size={16} />
+              )}
+              <span>Save Stock</span>
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
+  );
+}
+
+export default function UpdateStockPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+          <Loader2 className="animate-spin text-[#214b21]" size={32} />
+        </div>
+      }
+    >
+      <UpdateStockFormContent />
+    </Suspense>
   );
 }
