@@ -14,22 +14,9 @@ import {
   Check,
   Loader2,
   CheckCircle2,
+  Package,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
-
-interface ProductVariant {
-  _id?: string;
-  price?: number;
-  mrp?: number;
-  stock?: number;
-  available_stock?: number;
-}
-
-interface ProductImage {
-  _id?: string;
-  image_url?: string;
-  is_primary?: boolean;
-}
 
 interface Product {
   id: string;
@@ -43,17 +30,12 @@ interface Product {
   image: string;
 }
 
-const statusOptions = ["All Status", "ACTIVE", "DRAFT"];
+const statusOptions = ["All Status", "ACTIVE", "DEACTIVE"];
 const sortOptions = [
   "Sort by: Latest",
   "Sort by: Price (Low to High)",
   "Sort by: Price (High to Low)",
 ];
-
-const categoryStyles: Record<string, string> = {
-  HONEY: "bg-[#fef9c3] text-[#a16207]",
-  "GIFT BOX": "bg-[#f3e8ff] text-[#9333ea]",
-};
 
 const stockStyles: Record<string, string> = {
   "IN STOCK": "bg-[#e8f8ee] text-[#16a34a]",
@@ -63,7 +45,7 @@ const stockStyles: Record<string, string> = {
 
 const statusStyles: Record<string, string> = {
   ACTIVE: "bg-[#eff6ff] text-[#2563eb]",
-  DRAFT: "bg-slate-100 text-slate-500",
+  DEACTIVE: "bg-slate-100 text-slate-500",
 };
 
 interface CustomDropdownProps {
@@ -149,6 +131,36 @@ export default function ProductsTable() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  // 🔑 Robust Helper to Extract Auth Headers from everywhere (Storage & Cookie)
+  const getAuthHeaders = (): Record<string, string> => {
+    if (typeof window === "undefined") return {};
+
+    // 1. Try LocalStorage / SessionStorage
+    let token =
+      localStorage.getItem("token") ||
+      localStorage.getItem("admin_token") ||
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("token") ||
+      sessionStorage.getItem("admin_token");
+
+    // 2. Try Reading Non-HttpOnly Document Cookie if storage fails
+    if (!token && typeof document !== "undefined") {
+      const match = document.cookie.match(new RegExp("(^| )token=([^;]+)"));
+      if (match) token = match[2];
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    return headers;
+  };
+
   // Category Options Filter
   const categoryOptions = useMemo(() => {
     const set = new Set<string>();
@@ -163,7 +175,9 @@ export default function ProductsTable() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/products`, {
+        method: "GET",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
 
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
@@ -178,23 +192,49 @@ export default function ProductsTable() {
         return;
       }
 
-      // Format API Data to Component Schema
+      // Format API Data safely
       const formatted: Product[] = rawProducts.map((p: any) => {
-        const variants: ProductVariant[] = p.variantDocumentId || p.variants || [];
-        const primaryVariant = variants[0];
+        const variants = p.variantDocumentId || p.variants || p.variant || [];
+        const primaryVariant = Array.isArray(variants) ? variants[0] : variants;
 
-        const images: ProductImage[] = p.imageDocumentId || p.images || [];
-        const primaryImg =
-          images.find((img) => img.is_primary)?.image_url ||
-          images[0]?.image_url ||
-          p.image?.image_url ||
-          "/placeholder.png";
+        const images = p.imageDocumentId || p.images || p.image || [];
+        let primaryImg = "";
 
-        const stock =
+        if (Array.isArray(images) && images.length > 0) {
+          const primaryObj = images.find((img: any) => img?.is_primary);
+          primaryImg =
+            primaryObj?.image_url ||
+            primaryObj?.url ||
+            images[0]?.image_url ||
+            images[0]?.url ||
+            "";
+        } else if (typeof images === "string") {
+          primaryImg = images;
+        } else if (images && typeof images === "object") {
+          primaryImg = images.image_url || images.url || "";
+        }
+
+        if (primaryImg && !primaryImg.startsWith("http") && !primaryImg.startsWith("data:")) {
+          primaryImg = `${API_BASE_URL}/${primaryImg.replace(/^\//, "")}`;
+        }
+
+        const price = Number(
+          primaryVariant?.price ??
+            primaryVariant?.variant_price ??
+            p.price ??
+            p.product_price ??
+            0
+        );
+
+        const stock = Number(
           primaryVariant?.available_stock ??
-          primaryVariant?.stock ??
-          p.available_stock ??
-          0;
+            primaryVariant?.stock ??
+            primaryVariant?.quantity ??
+            p.available_stock ??
+            p.stock ??
+            p.total_stock ??
+            0
+        );
 
         let stockStatus = "IN STOCK";
         if (stock === 0) stockStatus = "OUT OF STOCK";
@@ -204,17 +244,18 @@ export default function ProductsTable() {
           p.categoryId?.category_name ||
           p.categoryId?.name ||
           p.category_name ||
+          p.category ||
           p.product_type ||
-          "HONEY";
+          "UNCATEGORIZED";
 
         return {
           id: p._id || p.id,
           name: p.product_name || p.name || "Untitled Product",
           category: String(catName).toUpperCase(),
-          price: primaryVariant?.price || p.price || 0,
+          price: price,
           stockStatus: stockStatus,
           stockCount: stock,
-          status: p.is_active === false ? "DRAFT" : "ACTIVE",
+          status: p.is_active === false || p.status === "DEACTIVE" || p.status === "DRAFT" ? "DEACTIVE" : "ACTIVE",
           updatedDate: p.updatedAt
             ? new Date(p.updatedAt).toLocaleDateString("en-GB", {
                 day: "2-digit",
@@ -239,7 +280,7 @@ export default function ProductsTable() {
     fetchProducts();
   }, []);
 
-  // 🌐 2. DELETE PRODUCT VIA API
+  // 🌐 2. DELETE PRODUCT VIA API (FIXED 401 UNAUTHORIZED)
   const handleDeleteProduct = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return;
 
@@ -248,9 +289,22 @@ export default function ProductsTable() {
       const res = await fetch(`${API_BASE_URL}/api/products/remove/${id}`, {
         method: "DELETE",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
 
-      if (!res.ok) {
+      // Fallback endpoint check if 404
+      if (res.status === 404) {
+        const fallbackRes = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: getAuthHeaders(),
+        });
+
+        if (!fallbackRes.ok) {
+          const errData = await fallbackRes.json().catch(() => ({}));
+          throw new Error(errData.message || "Failed to delete product");
+        }
+      } else if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || "Failed to delete product");
       }
@@ -258,7 +312,7 @@ export default function ProductsTable() {
       setProductsList((prev) => prev.filter((p) => p.id !== id));
       showToast("Product deleted successfully!");
     } catch (err: any) {
-      console.error(err);
+      console.error("Delete Error:", err);
       showToast(err.message || "Could not delete product");
     } finally {
       setDeletingId(null);
@@ -269,7 +323,6 @@ export default function ProductsTable() {
     router.push("/product/addproduct");
   };
 
-  // 🎯 EDIT PRODUCT REDIRECT (Query parameter passed with ID)
   const handleEditProduct = (id: string) => {
     router.push(`/product/addproduct?id=${id}`);
   };
@@ -442,21 +495,34 @@ export default function ProductsTable() {
               filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-3 px-5">
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-11 h-11 rounded-xl object-cover border border-slate-200/80 bg-amber-50"
-                    />
+                    {product.image ? (
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                          const parent = (e.target as HTMLElement).parentElement;
+                          if (parent && !parent.querySelector(".fallback-box")) {
+                            const fallback = document.createElement("div");
+                            fallback.className =
+                              "fallback-box w-11 h-11 rounded-xl bg-amber-50 border border-slate-200/80 flex items-center justify-center text-amber-700";
+                            fallback.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
+                            parent.appendChild(fallback);
+                          }
+                        }}
+                        className="w-11 h-11 rounded-xl object-cover border border-slate-200/80 bg-amber-50 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-amber-50 border border-slate-200/80 flex items-center justify-center text-amber-700">
+                        <Package size={20} />
+                      </div>
+                    )}
                   </td>
 
                   <td className="py-3 px-5 font-bold text-slate-800 text-sm">{product.name}</td>
 
                   <td className="py-3 px-5">
-                    <span
-                      className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
-                        categoryStyles[product.category] ?? "bg-slate-100 text-slate-700"
-                      }`}
-                    >
+                    <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-[#fef9c3] text-[#a16207]">
                       {product.category}
                     </span>
                   </td>

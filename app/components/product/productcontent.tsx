@@ -14,8 +14,11 @@ import {
 // ---------- Types ----------
 interface Category {
   _id: string;
-  name: string;
-  status?: string; // assuming active by default
+  category_name?: string;
+  name?: string;
+  description?: string;
+  slug?: string;
+  status?: string;
 }
 
 export default function CategoryManagement() {
@@ -52,6 +55,11 @@ export default function CategoryManagement() {
     fetchCategories();
   }, []);
 
+  // ---------- Helper function to get Category Name ----------
+  const getCategoryName = (cat: Category) => {
+    return cat.category_name || cat.name || "Unnamed Category";
+  };
+
   // ---------- Search Filter ----------
   useEffect(() => {
     if (searchTerm.trim() === "") {
@@ -59,7 +67,10 @@ export default function CategoryManagement() {
     } else {
       const lower = searchTerm.toLowerCase();
       setFilteredCategories(
-        categories.filter((cat) => cat.name.toLowerCase().includes(lower))
+        categories.filter((cat) => {
+          const catName = getCategoryName(cat);
+          return catName.toLowerCase().includes(lower);
+        })
       );
     }
   }, [searchTerm, categories]);
@@ -79,11 +90,15 @@ export default function CategoryManagement() {
     }
     setSubmitting(true);
     try {
+      // Sending category_name as key according to backend schema
       const res = await fetch(`${API_BASE_URL}/api/category/add`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newCategoryName.trim() }),
+        body: JSON.stringify({ 
+          category_name: newCategoryName.trim(),
+          name: newCategoryName.trim() // fallback in case backend checks both
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -113,15 +128,14 @@ export default function CategoryManagement() {
         throw new Error(err.message || "Failed to delete");
       }
       showToast(`Category "${name}" deleted`, "success");
-      fetchCategories(); // refresh
+      fetchCategories();
     } catch (err: any) {
       showToast(err.message || "Error deleting category", "error");
     }
   };
 
-  // ---------- Render ----------
   return (
-    <div className="min-h-screen bg-[#FDF1E3] text-slate-800 font-sans pb-12">
+    <div className="min-h-screen text-slate-800 font-sans pb-12">
 
       {/* Toast Notification */}
       {toast && (
@@ -143,8 +157,7 @@ export default function CategoryManagement() {
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
               Category Management
             </h1>
-            <p className="text-xs font-medium text-slate-400 mt-0.5">
-              Add, edit, and manage product categories (flavours).
+            <p className="text-xs font-medium text-slate-500 mt-0.5">
             </p>
           </div>
           <button
@@ -164,14 +177,14 @@ export default function CategoryManagement() {
             placeholder="Search by category name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium focus:outline-none focus:border-[#d9730d]"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-xs font-medium focus:outline-none focus:border-[#d9730d]"
           />
         </div>
 
         {/* Table Card */}
         <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-slate-500">Loading categories...</div>
+            <div className="p-8 text-center text-slate-500 font-medium">Loading categories...</div>
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -192,38 +205,40 @@ export default function CategoryManagement() {
                         </td>
                       </tr>
                     ) : (
-                      filteredCategories.map((cat, index) => (
-                        <tr key={cat._id} className="border-b border-slate-100 hover:bg-amber-50/30 transition-colors">
-                          <td className="p-3 font-semibold text-slate-600">{index + 1}</td>
-                          <td className="p-3 font-bold text-slate-800">{cat.name}</td>
-                          <td className="p-3">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Active
-                            </span>
-                          </td>
-                          <td className="p-3">
-                            <button
-                              onClick={() => handleDeleteCategory(cat._id, cat.name)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                              title="Delete category"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      filteredCategories.map((cat, index) => {
+                        const displayName = getCategoryName(cat);
+                        return (
+                          <tr key={cat._id || index} className="border-b border-slate-100 hover:bg-amber-50/30 transition-colors">
+                            <td className="p-3 font-semibold text-slate-600">{index + 1}</td>
+                            <td className="p-3 font-bold text-slate-900">{displayName}</td>
+                            <td className="p-3">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Active
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <button
+                                onClick={() => handleDeleteCategory(cat._id, displayName)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                title="Delete category"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Footer with pagination (optional) */}
+              {/* Footer */}
               <div className="border-t border-slate-200/80 px-4 py-3 bg-[#FAF8F5] text-[11px] text-slate-500 flex justify-between items-center">
                 <span>
                   Showing {filteredCategories.length} of {categories.length} categories
                 </span>
-                {/* Pagination controls could go here if needed */}
               </div>
             </>
           )}
@@ -232,8 +247,8 @@ export default function CategoryManagement() {
 
       {/* ---------- Add Category Modal ---------- */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-slate-900">Add New Category</h2>
               <button
@@ -247,7 +262,7 @@ export default function CategoryManagement() {
             <form onSubmit={handleAddCategory}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     Category Name <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -255,7 +270,7 @@ export default function CategoryManagement() {
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
                     placeholder="Enter category name"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-[#d9730d]"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 text-xs font-semibold focus:outline-none focus:border-[#d9730d]"
                     autoFocus
                     required
                   />
