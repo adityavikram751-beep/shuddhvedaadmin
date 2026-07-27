@@ -569,13 +569,7 @@ export default function InventoryListPage() {
             Export
           </button>
 
-          <button
-            onClick={handleAddStock}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#d9730d] hover:bg-[#c06509] text-white text-xs font-bold transition-all shadow-sm"
-          >
-            <Plus size={16} className="stroke-[3]" />
-            Add Stock / Update
-          </button>
+        
         </div>
       </div>
 
