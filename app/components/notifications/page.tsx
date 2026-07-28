@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ShoppingCart,
   Package,
@@ -11,14 +11,13 @@ import {
   Gift,
   Settings,
   CheckCircle2,
-  Filter,
-  ChevronDown,
   ChevronRight,
   Bell,
-  Check,
+  Trash2,
+  Loader2,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/auth";
 
-// Notification Types Definition
 interface NotificationItem {
   id: string;
   title: string;
@@ -35,209 +34,160 @@ interface NotificationItem {
   dotColor: string;
 }
 
-// Initial Mock Notifications Data (Matching Screenshot Exactly)
-const initialNotifications: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "New Order Received",
-    description: "Order #ORD-1052 has been placed by Priya Sharma.",
-    time: "2 min ago",
-    badge: "New",
-    isRead: false,
-    type: "Orders",
-    icon: ShoppingCart,
-    iconBg: "bg-[#E6F4EA]",
-    iconColor: "text-[#34A853]",
-    badgeBg: "bg-[#E6F4EA]",
-    badgeColor: "text-[#34A853]",
-    dotColor: "bg-[#34A853]",
-  },
-  {
-    id: "notif-2",
-    title: "Low Stock Alert",
-    description: "Raw Honey 250g has only 4 units left in stock.",
-    time: "10 min ago",
-    badge: "New",
-    isRead: false,
-    type: "Inventory",
-    icon: Package,
-    iconBg: "bg-[#FEF3D6]",
-    iconColor: "text-[#F5A623]",
-    badgeBg: "bg-[#F3E8FF]",
-    badgeColor: "text-[#A855F7]",
-    dotColor: "bg-[#F5A623]",
-  },
-  {
-    id: "notif-3",
-    title: "New Product Added",
-    description: "Wild Honey 1kg has been added successfully.",
-    time: "25 min ago",
-    badge: "New",
-    isRead: false,
-    type: "Products",
-    icon: PlusCircle,
-    iconBg: "bg-[#EEF2FF]",
-    iconColor: "text-[#6366F1]",
-    badgeBg: "bg-[#F3E8FF]",
-    badgeColor: "text-[#A855F7]",
-    dotColor: "bg-[#6366F1]",
-  },
-  {
-    id: "notif-4",
-    title: "Coupon Expiring Tomorrow",
-    description: 'Coupon "FESTIVE20" will expire tomorrow.',
-    time: "1 hour ago",
-    badge: "New",
-    isRead: false,
-    type: "Promotions",
-    icon: Percent,
-    iconBg: "bg-[#FCE8E6]",
-    iconColor: "text-[#EA4335]",
-    badgeBg: "bg-[#F3E8FF]",
-    badgeColor: "text-[#A855F7]",
-    dotColor: "bg-[#EA4335]",
-  },
-  {
-    id: "notif-5",
-    title: "Website Content Updated",
-    description: "Hero Banner on Homepage has been updated.",
-    time: "3 hours ago",
-    badge: "New",
-    isRead: false,
-    type: "System",
-    icon: FileText,
-    iconBg: "bg-[#E8F0FE]",
-    iconColor: "text-[#1A73E8]",
-    badgeBg: "bg-[#F3E8FF]",
-    badgeColor: "text-[#A855F7]",
-    dotColor: "bg-[#1A73E8]",
-  },
-  {
-    id: "notif-6",
-    title: "Monthly Sales Report Ready",
-    description: "April 2025 sales report is ready to view.",
-    time: "Yesterday, 10:30 AM",
-    badge: "Read",
-    isRead: true,
-    type: "Orders",
-    icon: TrendingUp,
-    iconBg: "bg-[#E6F4EA]",
-    iconColor: "text-[#34A853]",
-    badgeBg: "bg-[#E6F4EA]",
-    badgeColor: "text-[#34A853]",
-    dotColor: "bg-[#34A853]",
-  },
-  {
-    id: "notif-7",
-    title: "New Custom Gift Request",
-    description: "Rahul from Mumbai requested a Custom Gift Box.",
-    time: "Yesterday, 09:15 AM",
-    badge: "New",
-    isRead: false,
-    type: "Gifts",
-    icon: Gift,
-    iconBg: "bg-[#FFF4EB]",
-    iconColor: "text-[#FF7A00]",
-    badgeBg: "bg-[#FFF4EB]",
-    badgeColor: "text-[#FF7A00]",
-    dotColor: "bg-[#FF7A00]",
-  },
-  {
-    id: "notif-8",
-    title: "System Update",
-    description: "System maintenance completed successfully.",
-    time: "2 May 2025, 11:20 AM",
-    badge: "Read",
-    isRead: true,
-    type: "System",
-    icon: Settings,
-    iconBg: "bg-[#E8F0FE]",
-    iconColor: "text-[#1A73E8]",
-    badgeBg: "bg-[#E8F0FE]",
-    badgeColor: "text-[#1A73E8]",
-    dotColor: "bg-[#1A73E8]",
-  },
-];
+type ApiRecord = Record<string, unknown>;
 
-// Additional Batch for "Load More"
-const loadMoreBatch: NotificationItem[] = [
-  {
-    id: "notif-9",
-    title: "Bulk Order Query Received",
-    description: "Anjali Gupta inquired about 50 Gift Packs.",
-    time: "1 May 2025, 03:20 PM",
-    badge: "Read",
-    isRead: true,
-    type: "Gifts",
-    icon: Gift,
-    iconBg: "bg-[#FFF4EB]",
-    iconColor: "text-[#FF7A00]",
-    badgeBg: "bg-[#E8F0FE]",
-    badgeColor: "text-[#1A73E8]",
-    dotColor: "bg-[#FF7A00]",
-  },
-  {
-    id: "notif-10",
-    title: "Stock Restocked",
-    description: "50 Units of Tulsi Honey added to inventory.",
-    time: "30 Apr 2025, 11:10 AM",
-    badge: "Read",
-    isRead: true,
-    type: "Inventory",
-    icon: Package,
-    iconBg: "bg-[#FEF3D6]",
-    iconColor: "text-[#F5A623]",
-    badgeBg: "bg-[#E6F4EA]",
-    badgeColor: "text-[#34A853]",
-    dotColor: "bg-[#F5A623]",
-  },
-];
+function asRecord(value: unknown): ApiRecord {
+  return value && typeof value === "object" ? (value as ApiRecord) : {};
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function formatTime(value: string): string {
+  if (!value) return "Recently";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }) + ", " + date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+
+function mapNotification(raw: ApiRecord): NotificationItem {
+  const id = asString(raw._id) || asString(raw.id);
+  const title = asString(raw.title) || asString(raw.subject) || "Notification";
+  const description = asString(raw.description) || asString(raw.message) || "";
+  
+  // 🎯 Properly detect 'is_read' from your backend response schema
+  const isRead = Boolean(
+    raw.is_read === true || 
+    raw.is_read === "true" || 
+    raw.isRead === true || 
+    raw.isRead === "true" || 
+    raw.seen === true || 
+    raw.seen === "true" || 
+    raw.read === true || 
+    raw.read === "true" ||
+    raw.status === "Read" ||
+    raw.status === "read"
+  );
+
+  const createdAt = asString(raw.createdAt) || asString(raw.updatedAt) || asString(raw.notification_time);
+
+  let type: NotificationItem["type"] = "System";
+  let icon = Settings;
+  let iconBg = "bg-[#E8F0FE]";
+  let iconColor = "text-[#1A73E8]";
+  let dotColor = "bg-[#1A73E8]";
+
+  const lowerTitle = title.toLowerCase();
+  if (lowerTitle.includes("order") || lowerTitle.includes("sales")) {
+    type = "Orders";
+    icon = ShoppingCart;
+    iconBg = "bg-[#E6F4EA]";
+    iconColor = "text-[#34A853]";
+    dotColor = "bg-[#34A853]";
+  } else if (lowerTitle.includes("stock") || lowerTitle.includes("inventory")) {
+    type = "Inventory";
+    icon = Package;
+    iconBg = "bg-[#FEF3D6]";
+    iconColor = "text-[#F5A623]";
+    dotColor = "bg-[#F5A623]";
+  } else if (lowerTitle.includes("product")) {
+    type = "Products";
+    icon = PlusCircle;
+    iconBg = "bg-[#EEF2FF]";
+    iconColor = "text-[#6366F1]";
+    dotColor = "bg-[#6366F1]";
+  } else if (lowerTitle.includes("coupon") || lowerTitle.includes("discount") || lowerTitle.includes("promo")) {
+    type = "Promotions";
+    icon = Percent;
+    iconBg = "bg-[#FCE8E6]";
+    iconColor = "text-[#EA4335]";
+    dotColor = "bg-[#EA4335]";
+  } else if (lowerTitle.includes("gift") || lowerTitle.includes("enquiry")) {
+    type = "Gifts";
+    icon = Gift;
+    iconBg = "bg-[#FFF4EB]";
+    iconColor = "text-[#FF7A00]";
+    dotColor = "bg-[#FF7A00]";
+  }
+
+  return {
+    id,
+    title,
+    description,
+    time: formatTime(createdAt),
+    badge: isRead ? "Read" : "New",
+    isRead,
+    type,
+    icon,
+    iconBg,
+    iconColor,
+    badgeBg: isRead ? "bg-[#E6F4EA]" : "bg-[#F3E8FF]",
+    badgeColor: isRead ? "text-[#34A853]" : "text-[#A855F7]",
+    dotColor,
+  };
+}
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"All" | "Unread" | "Read">("All");
-  
-  // Filter Dropdown States
-  const [selectedType, setSelectedType] = useState<string>("All Types");
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  
-  // Load More States
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [message, setMessage] = useState("");
 
-  // Tab & Dropdown Filtering Logic
+  const fetchNotifications = async () => {
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notification/all`, {
+        method: "GET",
+        credentials: "include",
+      });
+      const data: unknown = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(asString(asRecord(data).message) || "Failed to load notifications");
+      }
+
+      const rawList = (Array.isArray(data) 
+        ? data 
+        : Array.isArray(asRecord(data).data) 
+        ? asRecord(data).data 
+        : Array.isArray(asRecord(asRecord(data).data).notifications)
+        ? asRecord(asRecord(data).data).notifications
+        : []) as unknown[];
+
+      const formatted = rawList.map((item: unknown) => mapNotification(asRecord(item))).filter((n: NotificationItem) => n.id);
+      setNotifications(formatted);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to load notifications");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchNotifications();
+  }, []);
+
   const filteredNotifications = useMemo(() => {
     return notifications.filter((item) => {
-      // 1. Tab Status Filter
       if (activeTab === "Unread" && item.isRead) return false;
       if (activeTab === "Read" && !item.isRead) return false;
-
-      // 2. Dropdown Category Type Filter
-      if (selectedType !== "All Types" && item.type !== selectedType) return false;
-
       return true;
     });
-  }, [notifications, activeTab, selectedType]);
+  }, [notifications, activeTab]);
 
-  // Counts for Tabs
   const unreadCount = useMemo(() => notifications.filter((n) => !n.isRead).length, [notifications]);
   const readCount = useMemo(() => notifications.filter((n) => n.isRead).length, [notifications]);
 
-  // Handler: Mark all as read
-  const handleMarkAllRead = () => {
-    setNotifications((prev) =>
-      prev.map((n) => ({
-        ...n,
-        badge: "Read",
-        isRead: true,
-        badgeBg: "bg-[#E6F4EA]",
-        badgeColor: "text-[#34A853]",
-      }))
-    );
-  };
+  const handleItemClick = async (id: string) => {
+    const target = notifications.find((n) => n.id === id);
+    if (target?.isRead) return;
 
-  // Handler: Mark single item read on click
-  const handleItemClick = (id: string) => {
     setNotifications((prev) =>
       prev.map((n) =>
         n.id === id
@@ -245,28 +195,74 @@ export default function NotificationsPage() {
           : n
       )
     );
+
+    try {
+      await fetch(`${API_BASE_URL}/api/notification/seen/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Failed to mark notification as seen on backend:", err);
+    }
   };
 
-  // Handler: Load More Button
-  const handleLoadMore = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setNotifications((prev) => [...prev, ...loadMoreBatch]);
-      setLoading(false);
-      setHasMore(false);
-    }, 500);
+  const handleMarkAllRead = async () => {
+    const unreadItems = notifications.filter((n) => !n.isRead);
+    
+    setNotifications((prev) =>
+      prev.map((n) => ({
+        ...n,
+        isRead: true,
+        badge: "Read",
+        badgeBg: "bg-[#E6F4EA]",
+        badgeColor: "text-[#34A853]",
+      }))
+    );
+
+    for (const item of unreadItems) {
+      try {
+        await fetch(`${API_BASE_URL}/api/notification/seen/${item.id}`, {
+          method: "PATCH",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Failed for ID:", item.id);
+      }
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this notification?")) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notification/remove/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      } else {
+        alert("Failed to delete notification");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-8 text-[#0F172A] font-sans">
       <div className="max-w-[1200px] mx-auto space-y-6">
 
-        {/* ---------------- Top Controls Bar ---------------- */}
+        {message && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+            {message}
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          
-          {/* Tabs Group */}
           <div className="flex items-center gap-2">
-            {/* Tab: All */}
             <button
               onClick={() => setActiveTab("All")}
               className={`px-5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -283,7 +279,6 @@ export default function NotificationsPage() {
               </span>
             </button>
 
-            {/* Tab: Unread */}
             <button
               onClick={() => setActiveTab("Unread")}
               className={`px-5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -300,7 +295,6 @@ export default function NotificationsPage() {
               </span>
             </button>
 
-            {/* Tab: Read */}
             <button
               onClick={() => setActiveTab("Read")}
               className={`px-5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -318,9 +312,7 @@ export default function NotificationsPage() {
             </button>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 self-end sm:self-auto relative">
-            {/* Mark All As Read */}
+          <div className="flex items-center gap-3 self-end sm:self-auto">
             <button
               onClick={handleMarkAllRead}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-[#E2E8F0] bg-white text-xs font-bold text-[#334155] hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
@@ -328,48 +320,16 @@ export default function NotificationsPage() {
               <CheckCircle2 size={15} className="text-[#64748B]" />
               <span>Mark all as read</span>
             </button>
-
-            {/* Working Filter Dropdown Toggle */}
-            <div className="relative">
-              <button
-                onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-[#E2E8F0] bg-white text-xs font-bold text-[#334155] hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-              >
-                <Filter size={14} className="text-[#64748B]" />
-                <span>{selectedType}</span>
-                <ChevronDown size={14} className="text-[#94A3B8]" />
-              </button>
-
-              {/* Filter Options Popover */}
-              {showFilterDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-30 space-y-1">
-                  {["All Types", "Orders", "Inventory", "Products", "Promotions", "System", "Gifts"].map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        setSelectedType(type);
-                        setShowFilterDropdown(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition-colors ${
-                        selectedType === type
-                          ? "bg-amber-50 text-[#D97706]"
-                          : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span>{type}</span>
-                      {selectedType === type && <Check size={14} className="text-[#D97706]" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
-
         </div>
 
-        {/* ---------------- Notifications Card Stack List ---------------- */}
         <div className="space-y-3">
-          {filteredNotifications.length > 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-3xl p-12 text-center space-y-3 border border-[#F1F5F9]">
+              <Loader2 size={28} className="animate-spin text-[#D97706] mx-auto" />
+              <p className="text-xs font-semibold text-slate-500">Loading notifications...</p>
+            </div>
+          ) : filteredNotifications.length > 0 ? (
             filteredNotifications.map((item) => {
               const IconComponent = item.icon;
 
@@ -377,24 +337,22 @@ export default function NotificationsPage() {
                 <div
                   key={item.id}
                   onClick={() => handleItemClick(item.id)}
-                  className={`bg-white rounded-2xl p-4 border transition-all flex items-center justify-between gap-4 cursor-pointer group shadow-[0_2px_8px_rgba(0,0,0,0.015)] ${
-                    !item.isRead ? "border-slate-200/80 hover:border-slate-300" : "border-[#F1F5F9] opacity-90"
+                  className={`rounded-2xl p-4 border transition-all flex items-center justify-between gap-4 cursor-pointer group shadow-[0_2px_8px_rgba(0,0,0,0.015)] ${
+                    !item.isRead 
+                      ? "bg-[#FFFBEB] border-amber-200/80 hover:border-amber-300" 
+                      : "bg-white border-[#F1F5F9]"
                   }`}
                 >
-                  {/* Left: Icon & Info */}
                   <div className="flex items-center gap-4 min-w-0">
-                    {/* Icon Box with Dot */}
                     <div className="relative shrink-0">
                       <div className={`h-11 w-11 rounded-2xl ${item.iconBg} flex items-center justify-center`}>
                         <IconComponent size={20} className={item.iconColor} />
                       </div>
-                      {/* Status Dot */}
                       {!item.isRead && (
                         <span className={`absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white ${item.dotColor}`} />
                       )}
                     </div>
 
-                    {/* Title & Description */}
                     <div className="min-w-0">
                       <h4 className="text-sm font-bold text-[#0F172A] group-hover:text-[#D97706] transition-colors leading-tight">
                         {item.title}
@@ -405,7 +363,6 @@ export default function NotificationsPage() {
                     </div>
                   </div>
 
-                  {/* Right: Date, Badge & Arrow */}
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-right">
                       <p className="text-[11px] font-semibold text-[#94A3B8]">{item.time}</p>
@@ -416,13 +373,21 @@ export default function NotificationsPage() {
                       </span>
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={(e) => handleDelete(e, item.id)}
+                      className="p-2 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Delete Notification"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+
                     <ChevronRight size={16} className="text-[#CBD5E1] group-hover:text-[#0F172A] transition-colors" />
                   </div>
                 </div>
               );
             })
           ) : (
-            /* Empty State */
             <div className="bg-white rounded-3xl p-12 text-center space-y-3 border border-[#F1F5F9]">
               <div className="h-12 w-12 rounded-full bg-amber-50 text-[#D97706] flex items-center justify-center mx-auto">
                 <Bell size={22} />
@@ -432,20 +397,6 @@ export default function NotificationsPage() {
             </div>
           )}
         </div>
-
-        {/* ---------------- Load More Button ---------------- */}
-        {hasMore && filteredNotifications.length > 0 && (
-          <div className="flex justify-center pt-2">
-            <button
-              onClick={handleLoadMore}
-              disabled={loading}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-2xl border border-[#E2E8F0] bg-white text-xs font-bold text-[#334155] hover:bg-slate-50 transition-all shadow-2xs cursor-pointer disabled:opacity-50 active:scale-95"
-            >
-              <span>{loading ? "Loading..." : "Load More"}</span>
-              <ChevronDown size={15} className={`text-[#64748B] ${loading ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-        )}
 
       </div>
     </div>

@@ -20,7 +20,9 @@ import {
   ChevronRight,
   ChevronDown,
   X,
+  Loader2,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/auth";
 
 interface SubNavItem {
   label: string;
@@ -32,7 +34,7 @@ interface NavItem {
   href: string;
   icon: typeof LayoutDashboard;
   chevron: boolean;
-  keyword: string; // used for robust "am I active" matching on nested routes
+  keyword: string;
   subItems?: SubNavItem[];
 }
 
@@ -49,13 +51,26 @@ const navItems: NavItem[] = [
       { label: "Product List", href: "/product" },
       { label: "Add Product", href: "/product/addproduct" },
       { label: "Add Category", href: "/product/productcontent" },
-
     ],
   },
   { label: "Inventory", href: "/inventory", icon: Archive, chevron: true, keyword: "inventory" },
   { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
   { label: "Promotions", href: "/promotion", icon: Tag, chevron: true, keyword: "promotion" },
-  { label: "Website Content", href: "/website-content", icon: Monitor, chevron: true, keyword: "content" },
+  {
+    label: "Website Content",
+    href: "/website-content",
+    icon: Monitor,
+    chevron: true,
+    keyword: "content",
+    subItems: [
+      { label: "Coming Product", href: "/website-content/coming-product" },
+      { label: "Health Benefit", href: "/website-content/health-benefit" },
+      { label: "Customer Review", href: "/website-content/customer-review" },
+      { label: "Customer Query", href: "/website-content/customer-query" },
+      { label: "Bulk Enquiry", href: "/website-content/bulk-enquiry" },
+      { label: "Contactus", href: "/website-content/contactus" },
+    ],
+  },
   { label: "Notifications", href: "/notifications", icon: Bell, chevron: true, keyword: "notification" },
   { label: "Reports", href: "/reports", icon: BarChart3, chevron: true, keyword: "report" },
   { label: "Settings", href: "/settings", icon: Settings, chevron: true, keyword: "setting" },
@@ -66,8 +81,6 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-// Works for any nested route: /orders/1052, /order-details/1052, etc.
-// all correctly match the "Orders" nav item.
 function isNavItemActive(pathname: string, item: NavItem): boolean {
   const path = pathname.toLowerCase();
   if (path === item.href) return true;
@@ -78,12 +91,23 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    // Clear any stored auth/session data here if needed, e.g.:
-    // localStorage.removeItem("token");
-    onClose();
-    router.push("/login");
+  // Logout Handler with POST API
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await fetch(`${API_BASE_URL}/api/admin/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout API error:", error);
+    } finally {
+      setIsLoggingOut(false);
+      onClose();
+      router.push("/");
+    }
   };
 
   useEffect(() => {
@@ -97,13 +121,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     };
   }, [isOpen]);
 
-  // Auto-expand the group that matches the current route (e.g. keep
-  // "Products" open when on /product/add) so the dropdown state stays in
-  // sync with navigation instead of resetting.
-  useEffect(() => {
-    const active = navItems.find((item) => item.subItems && isNavItemActive(pathname, item));
-    setExpanded(active ? active.label : null);
-  }, [pathname]);
+  const activeGroup = navItems.find((item) => item.subItems && isNavItemActive(pathname, item));
 
   const handleParentClick = (item: NavItem, e: React.MouseEvent) => {
     if (item.subItems && item.subItems.length > 0) {
@@ -173,7 +191,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {navItems.map((item) => {
             const { label, href, icon: Icon, chevron, subItems } = item;
             const isActive = isNavItemActive(pathname, item);
-            const isExpanded = expanded === label;
+            const isExpanded = expanded === label || activeGroup?.label === label;
             const hasSubItems = !!subItems && subItems.length > 0;
 
             return (
@@ -209,7 +227,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {hasSubItems && (
                   <div
                     className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                      isExpanded ? "max-h-40 opacity-100 mt-1" : "max-h-0 opacity-0"
+                      isExpanded
+                        ? "max-h-64 opacity-100 mt-1 overflow-y-auto"
+                        : "max-h-0 opacity-0"
                     }`}
                   >
                     <div className="ml-6 pl-3 border-l border-gray-100 space-y-1">
@@ -247,10 +267,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </button>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50"
+            disabled={isLoggingOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
           >
-            <LogOut size={18} />
-            Logout
+            {isLoggingOut ? <Loader2 size={18} className="animate-spin" /> : <LogOut size={18} />}
+            {isLoggingOut ? "Logging out..." : "Logout"}
           </button>
         </div>
       </aside>
