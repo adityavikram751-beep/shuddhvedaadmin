@@ -48,7 +48,7 @@ function getTitleForPath(pathname: string): string {
   if (path.includes("health-benefit")) return "Health Benefit";
   if (path.includes("customer-review")) return "Customer Review";
   if (path.includes("customer-query")) return "Customer Query";
-  if (path.includes("bulk-enquiry")) return "Bulk Enquiry";
+  // if (path.includes("bulk-enquiry")) return "Bulk Enquiry";
   if (path.includes("contactus")) return "Contactus";
 
   if (path.includes("website") || path.includes("content")) return "Website Content";

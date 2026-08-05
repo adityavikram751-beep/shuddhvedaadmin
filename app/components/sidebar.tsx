@@ -67,7 +67,7 @@ const navItems: NavItem[] = [
       { label: "Health Benefit", href: "/website-content/health-benefit" },
       { label: "Customer Review", href: "/website-content/customer-review" },
       { label: "Customer Query", href: "/website-content/customer-query" },
-      { label: "Bulk Enquiry", href: "/website-content/bulk-enquiry" },
+      // { label: "Bulk Enquiry", href: "/website-content/bulk-enquiry" },
       { label: "Contactus", href: "/website-content/contactus" },
     ],
   },

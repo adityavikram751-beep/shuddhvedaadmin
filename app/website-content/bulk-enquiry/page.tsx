@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/sidebar";
-import BulkEnquiry from "@/app/components/website-content/bulkenquiry";
+// import BulkEnquiry from "@/app/components/website-content/bulkenquiry";
 
 export default function CustomerQueryPage() {
   const [open, setOpen] = useState(false);
@@ -15,7 +15,7 @@ export default function CustomerQueryPage() {
       <div className="flex flex-1 flex-col">
         <Header onMenuClick={() => setOpen(true)} />
         <main className="flex-1 p-6" />
-        <BulkEnquiry/>
+        {/* <BulkEnquiry/> */}
       </div>
     </div>
   );
