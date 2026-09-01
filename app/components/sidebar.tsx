@@ -53,6 +53,7 @@ const navItems: NavItem[] = [
       { label: "Product List", href: "/product" },
       { label: "Add Product", href: "/product/addproduct" },
       { label: "Add Category", href: "/product/productcontent" },
+      { label: "Gift Plan", href: "/product/gift-plan" },
     ],
   },
   { label: "Inventory", href: "/inventory", icon: Archive, chevron: false, keyword: "inventory" },
