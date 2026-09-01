@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/sidebar";
-import Enquiry from "@/app/components/website-content/enquiry";
+import Header from "@/app/components/Header";
+import SubscribeManagement from "@/app/components/subscribe/SubscribeManagement";
 
-export default function CustomerQueryPage() {
+export default function SubscribePage() {
   const [open, setOpen] = useState(false);
 
   return (
@@ -14,8 +14,10 @@ export default function CustomerQueryPage() {
 
       <div className="flex flex-1 flex-col">
         <Header onMenuClick={() => setOpen(true)} />
-        <main className="flex-1 p-6" />
-        <Enquiry />
+
+        <main className="flex-1 p-6">
+          <SubscribeManagement />
+        </main>
       </div>
     </div>
   );

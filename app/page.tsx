@@ -114,15 +114,16 @@ function AdminLoginForm() {
 
       setSuccessMsg("Login successful! Redirecting to dashboard...");
 
-      // Backup localStorage session if token returned
-      if (data.token) {
-        localStorage.setItem("admin_token", data.token);
-      }
+      // Save localStorage session token upon successful OTP verification
+      const token = data.token || data.data?.token || data.adminToken || "authenticated_admin_session";
+      localStorage.setItem("admin_token", token);
+      localStorage.setItem("sudhveda_token", token);
 
       const redirectTo = searchParams.get("redirect") || "/dashboard";
+      const targetUrl = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
       setTimeout(() => {
-        router.push(redirectTo.startsWith("/") ? redirectTo : "/dashboard");
-      }, 800);
+        window.location.href = targetUrl;
+      }, 600);
     } catch (err: any) {
       setError(err.message || "OTP Verification failed.");
     } finally {

@@ -21,6 +21,8 @@ import {
   ChevronDown,
   X,
   Loader2,
+  UserCheck,
+  Users,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -40,7 +42,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, chevron: false, keyword: "dashboard" },
-  { label: "Orders", href: "/order", icon: ShoppingBag, chevron: true, keyword: "order" },
+  { label: "Orders", href: "/order", icon: ShoppingBag, chevron: false, keyword: "order" },
   {
     label: "Products",
     href: "/product",
@@ -53,9 +55,11 @@ const navItems: NavItem[] = [
       { label: "Add Category", href: "/product/productcontent" },
     ],
   },
-  { label: "Inventory", href: "/inventory", icon: Archive, chevron: true, keyword: "inventory" },
+  { label: "Inventory", href: "/inventory", icon: Archive, chevron: false, keyword: "inventory" },
   { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
-  { label: "Promotions", href: "/promotion", icon: Tag, chevron: true, keyword: "promotion" },
+  { label: "Subscribe", href: "/subscribe", icon: UserCheck, chevron: false, keyword: "subscribe" },
+  // { label: "Influencer Connects", href: "/influencer-connects", icon: Users, chevron: false, keyword: "influencer" },
+  { label: "Promotions", href: "/promotion", icon: Tag, chevron: false, keyword: "promotion" },
   {
     label: "Website Content",
     href: "/website-content",
@@ -67,13 +71,12 @@ const navItems: NavItem[] = [
       { label: "Health Benefit", href: "/website-content/health-benefit" },
       { label: "Customer Review", href: "/website-content/customer-review" },
       { label: "Customer Query", href: "/website-content/customer-query" },
-      // { label: "Bulk Enquiry", href: "/website-content/bulk-enquiry" },
       { label: "Contactus", href: "/website-content/contactus" },
     ],
   },
-  { label: "Notifications", href: "/notifications", icon: Bell, chevron: true, keyword: "notification" },
-  { label: "Reports", href: "/reports", icon: BarChart3, chevron: true, keyword: "report" },
-  { label: "Settings", href: "/settings", icon: Settings, chevron: true, keyword: "setting" },
+  { label: "Notifications", href: "/notifications", icon: Bell, chevron: false, keyword: "notification" },
+  { label: "Reports", href: "/reports", icon: BarChart3, chevron: false, keyword: "report" },
+  { label: "Settings", href: "/settings", icon: Settings, chevron: false, keyword: "setting" },
 ];
 
 interface SidebarProps {
@@ -104,9 +107,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     } catch (error) {
       console.error("Logout API error:", error);
     } finally {
+      localStorage.removeItem("admin_token");
+      localStorage.removeItem("sudhveda_token");
+      localStorage.removeItem("shuddhveda_user");
       setIsLoggingOut(false);
       onClose();
-      router.push("/");
+      window.location.href = "/";
     }
   };
 
@@ -200,10 +206,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   href={href}
                   onClick={(e) => handleParentClick(item, e)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                    ${
-                      isActive
-                        ? "bg-orange-50 text-orange-500"
-                        : "text-gray-600 hover:bg-gray-50"
+                    ${isActive
+                      ? "bg-orange-50 text-orange-500"
+                      : "text-gray-600 hover:bg-gray-50"
                     }`}
                 >
                   <span className="flex items-center gap-3">
@@ -214,9 +219,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     (hasSubItems ? (
                       <ChevronDown
                         size={16}
-                        className={`text-gray-400 transition-transform duration-200 ${
-                          isExpanded ? "rotate-180" : ""
-                        }`}
+                        className={`text-gray-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""
+                          }`}
                       />
                     ) : (
                       <ChevronRight size={16} className="text-gray-300" />
@@ -226,11 +230,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {/* Dropdown sub-items */}
                 {hasSubItems && (
                   <div
-                    className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                      isExpanded
-                        ? "max-h-64 opacity-100 mt-1 overflow-y-auto"
-                        : "max-h-0 opacity-0"
-                    }`}
+                    className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded
+                      ? "max-h-64 opacity-100 mt-1 overflow-y-auto"
+                      : "max-h-0 opacity-0"
+                      }`}
                   >
                     <div className="ml-6 pl-3 border-l border-gray-100 space-y-1">
                       {subItems!.map((sub) => {
@@ -241,10 +244,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                             href={sub.href}
                             onClick={onClose}
                             className={`block px-3 py-2 rounded-lg text-sm transition-colors
-                              ${
-                                isSubActive
-                                  ? "text-orange-500 font-medium bg-orange-50"
-                                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                              ${isSubActive
+                                ? "text-orange-500 font-medium bg-orange-50"
+                                : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
                               }`}
                           >
                             {sub.label}
@@ -261,10 +263,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Footer */}
         <div className="border-t border-gray-100 px-3 py-4 space-y-1">
-          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-            <HelpCircle size={18} />
-            Help Center
-          </button>
+
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}

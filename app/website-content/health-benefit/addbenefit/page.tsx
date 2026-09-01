@@ -5,7 +5,7 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/sidebar";
 import AddBenefit from "@/app/components/website-content/addbenefit";
 
-export default function HealthBenefitPage() {
+export default function HealthBenefitAddPage() {
   const [open, setOpen] = useState(false);
 
   return (
@@ -14,8 +14,10 @@ export default function HealthBenefitPage() {
 
       <div className="flex flex-1 flex-col">
         <Header onMenuClick={() => setOpen(true)} />
-        <main className="flex-1 p-6" />
-        <AddBenefit/>
+
+        <main className="flex-1 p-6 lg:p-8">
+          <AddBenefit />
+        </main>
       </div>
     </div>
   );

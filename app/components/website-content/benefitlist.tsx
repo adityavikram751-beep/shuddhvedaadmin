@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Trash2, Plus, Search, Filter } from "lucide-react";
+import { Loader2, Trash2, Plus, Search, RefreshCw, Video, Film, Play } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
 interface BenefitItem {
   id: string;
-  image: string;
-  category: string;
+  video_url: string;
+  thumbnail_url: string;
+  duration?: number;
+  format?: string;
   title: string;
   description: string;
   status: string;
@@ -25,12 +27,6 @@ function asString(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
-function normalizeImageUrl(url: string): string {
-  if (!url) return "";
-  if (url.startsWith("http") || url.startsWith("blob:") || url.startsWith("data:")) return url;
-  return `${API_BASE_URL}/${url.replace(/^\//, "")}`;
-}
-
 function formatUpdated(value: string): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -39,323 +35,242 @@ function formatUpdated(value: string): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }) + ", " + date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  });
 }
 
 export default function HealthContentList() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"All" | "Health Ideas with Honey" | "Honey Tips & Benefits">("All");
   const [items, setItems] = useState<BenefitItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
 
-  // 🌐 Fetch benefits based on category tab ("health" & "benefits")
-  const fetchBenefits = async (categoryTab: string) => {
+  // Fetch ALL benefit items in a single unified list
+  const fetchBenefits = async () => {
     setLoading(true);
-    setMessage("");
 
     try {
       let fetchedData: BenefitItem[] = [];
+      const slugs = ["honey", "healthy", "benefits", "all"];
 
-      if (categoryTab === "All") {
-        // Fetch both "health" and "benefits" categories for the "All" tab
-        const slugs = ["healthy", "benefits"];
-        for (const slug of slugs) {
-          try {
-            const res = await fetch(`${API_BASE_URL}/api/benefits/all-benefits/${slug}`, {
-              method: "GET",
-              credentials: "include",
+      for (const slug of slugs) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/benefits/all-benefits/${slug}`, {
+            method: "GET",
+            credentials: "include",
+          });
+          const json = await res.json().catch(() => ({}));
+
+          if (res.ok) {
+            const rawList = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+            const mapped = rawList.map((item: unknown) => {
+              const raw = asRecord(item);
+              const id = asString(raw._id) || asString(raw.id) || asString(raw.benefitId);
+              const videoUrl = asString(raw.video_url) || asString(raw.url) || asString(raw.video);
+              const thumbUrl = asString(raw.thumbnail_url) || asString(raw.thumbnail) || asString(raw.image);
+
+              return {
+                id,
+                video_url: videoUrl,
+                thumbnail_url: thumbUrl,
+                duration: typeof raw.duration === "number" ? raw.duration : 0,
+                format: asString(raw.format) || "mp4",
+                title: asString(raw.title) || "Honey Benefit Video",
+                description: asString(raw.description) || "",
+                status: "Published",
+                updated: asString(raw.createdAt) || asString(raw.updatedAt),
+              };
             });
-            const json = await res.json().catch(() => ({}));
 
-            if (res.ok) {
-              const rawList = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-              const mapped = rawList.map((raw: ApiRecord) => {
-                const id = asString(raw._id) || asString(raw.id) || asString(raw.benefitId);
-                const imgUrl = asString(raw.image) || asString(raw.image_url) || "";
-                
-                return {
-                  id,
-                  image: normalizeImageUrl(imgUrl),
-                  category: slug === "healthy" ? "Health Ideas with Honey" : "Honey Tips & Benefits",
-                  title: asString(raw.title) || "Untitled",
-                  description: asString(raw.description) || "",
-                  status: "Published",
-                  updated: asString(raw.createdAt) || asString(raw.updatedAt),
-                };
-              });
-              fetchedData = [...fetchedData, ...mapped];
+            for (const m of mapped) {
+              if (m.id && !fetchedData.some((existing) => existing.id === m.id)) {
+                fetchedData.push(m);
+              }
             }
-          } catch (err) {
-            console.error(`Failed for slug ${slug}:`, err);
           }
+        } catch (err) {
+          console.error(`Failed for slug ${slug}:`, err);
         }
-      } else {
-        // Specific tab selection
-        const slug = categoryTab === "Health Ideas with Honey" ? "healthy" : "benefits";
-        const res = await fetch(`${API_BASE_URL}/api/benefits/all-benefits/${slug}`, {
-          method: "GET",
-          credentials: "include",
-        });
-        const json = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(asString(json.message) || "Failed to fetch health content");
-        }
-
-        const rawList = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-        fetchedData = rawList.map((raw: ApiRecord) => {
-          const id = asString(raw._id) || asString(raw.id) || asString(raw.benefitId);
-          const imgUrl = asString(raw.image) || asString(raw.image_url) || "";
-          
-          return {
-            id,
-            image: normalizeImageUrl(imgUrl),
-            category: categoryTab,
-            title: asString(raw.title) || "Untitled",
-            description: asString(raw.description) || "",
-            status: "Published",
-            updated: asString(raw.createdAt) || asString(raw.updatedAt),
-          };
-        });
       }
 
       setItems(fetchedData);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load content");
+      console.error("Error fetching benefits:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void fetchBenefits(activeTab);
-  }, [activeTab]);
+    void fetchBenefits();
+  }, []);
 
-  // 🗑️ Delete Action using API: DELETE /api/benefits/remove/{benefitId}
-  const handleDelete = async (benefitId: string) => {
-    if (!confirm("Are you sure you want to delete this content?")) return;
+  // Handle Delete: DELETE /api/benefits/remove/${benefitId}
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this benefit video?")) return;
 
-    setDeletingId(benefitId);
-    setMessage("");
-
+    setDeletingId(id);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/benefits/remove/${benefitId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/benefits/remove/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(asString(data.message) || "Failed to delete item");
+      if (res.ok) {
+        setItems((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        setItems((prev) => prev.filter((item) => item.id !== id));
       }
-
-      setItems((prev: BenefitItem[]) => prev.filter((item: BenefitItem) => item.id !== benefitId));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete operation failed");
+    } catch (err) {
+      console.error("Delete error:", err);
+      setItems((prev) => prev.filter((item) => item.id !== id));
     } finally {
       setDeletingId(null);
     }
   };
 
-  // Filter items by search query
-  const filteredItems = items.filter((item: BenefitItem) =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredItems = items.filter((item) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q)
+    );
+  });
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-12 text-slate-900 font-sans">
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 pt-6 space-y-6">
-        
-        {/* TOP HEADER & BREADCRUMB */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 mb-1">
-              Website Management <span className="mx-1">›</span> <span className="text-slate-800 font-bold">Health Content</span>
-            </p>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Health Content
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-              Manage health articles and honey tips displayed on the website.
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <Video className="text-[#D97706]" /> Health Benefit Videos
+          </h1>
+          <p className="text-xs text-slate-500 font-semibold mt-1">Manage Cloudinary health benefit videos for ShuddhVeda website.</p>
+        </div>
 
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={fetchBenefits}
+            className="h-11 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-2 shadow-xs cursor-pointer"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin text-amber-500" : ""} /> Refresh
+          </button>
           <button
             type="button"
             onClick={() => router.push("/website-content/health-benefit/addbenefit")}
-            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-white text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+            className="h-11 px-5 rounded-xl bg-[#2D3A1B] hover:bg-[#1E2712] text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer"
           >
-            <Plus size={18} className="stroke-[3]" />
-            Add Content
+            <Plus size={16} /> Add Benefit Video
           </button>
         </div>
+      </div>
 
-        {/* ERROR BANNER */}
-        {message && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
-            {message}
+      {/* FILTER & SEARCH BAR */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="px-4 py-2 bg-amber-50 text-[#D97706] rounded-xl text-xs font-black uppercase border border-amber-200/60">
+            All Videos ({filteredItems.length})
+          </span>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search videos by title..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-10 pl-10 pr-4 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:border-[#D97706] transition"
+          />
+        </div>
+      </div>
+
+      {/* BIG VIDEO CARDS GRID DISPLAY ("Bada Card UI") */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {loading ? (
+          <div className="col-span-full bg-white p-16 rounded-3xl border border-slate-100 text-center flex flex-col items-center justify-center gap-3">
+            <Loader2 className="animate-spin text-[#D97706]" size={32} />
+            <p className="text-sm font-extrabold text-slate-700">Loading benefit videos from Cloudinary...</p>
+          </div>
+        ) : filteredItems.length > 0 ? (
+          filteredItems.map((item) => (
+            <div
+              key={item.id}
+              className="bg-white rounded-3xl border border-slate-200/70 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+            >
+              <div>
+                {/* Large Video Player Header */}
+                <div className="relative bg-black h-60 sm:h-64 w-full overflow-hidden">
+                  {item.video_url ? (
+                    <video
+                      controls
+                      src={item.video_url}
+                      poster={item.thumbnail_url}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-amber-50/40 gap-2">
+                      <Film size={44} className="text-[#D97706]" />
+                      <span className="text-xs font-bold text-slate-500">No Video Source</span>
+                    </div>
+                  )}
+
+                  {/* Duration Badge Pill */}
+                  {item.duration && item.duration > 0 ? (
+                    <span className="absolute bottom-3 right-3 bg-black/80 text-white text-[11px] font-mono font-bold px-2.5 py-1 rounded-md shadow-sm border border-white/20">
+                      {item.duration.toFixed(1)}s • {item.format?.toUpperCase() || "MP4"}
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Card Main Content */}
+                <div className="p-5 space-y-2.5">
+                  <h3 className="font-extrabold text-slate-900 text-base leading-snug">{item.title}</h3>
+                  {item.description && (
+                    <p className="text-xs text-slate-500 font-medium line-clamp-3 leading-relaxed">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Card Footer Actions */}
+              <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Published
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    {formatUpdated(item.updated)}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleDelete(item.id)}
+                  disabled={deletingId === item.id}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Remove Benefit Video"
+                >
+                  {deletingId === item.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full bg-white p-16 rounded-3xl border border-slate-100 text-center text-slate-400 space-y-3">
+            <Film size={44} className="mx-auto text-amber-500/50" />
+            <h3 className="text-base font-extrabold text-slate-700">No Benefit Videos Found</h3>
+            <p className="text-xs text-slate-400">Click "+ Add Benefit Video" to upload your first health video!</p>
           </div>
         )}
-
-        {/* TABS & SEARCH CONTROLS */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/60 shadow-xs">
-          {/* Tabs */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {(["All", "Health Ideas with Honey", "Honey Tips & Benefits"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === tab
-                    ? "bg-[#FFFbeb] text-[#D97706] border border-amber-200 shadow-xs"
-                    : "bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Filter */}
-          <div className="flex items-center gap-3">
-            <div className="relative w-full sm:w-72">
-              <input
-                type="text"
-                placeholder="Search by title..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D97706]"
-              />
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            </div>
-
-            <button
-              type="button"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
-            >
-              <Filter size={14} className="text-slate-500" />
-              Filter
-            </button>
-          </div>
-        </div>
-
-        {/* TABLE SECTION */}
-        <div className="bg-white rounded-3xl border border-slate-200/60 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead>
-                <tr className="bg-[#f8fafc] border-b border-slate-200/60 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                  <th className="py-4 px-6">Cover Image</th>
-                  <th className="py-4 px-6">Category</th>
-                  <th className="py-4 px-6">Title</th>
-                  <th className="py-4 px-6">Status</th>
-                  <th className="py-4 px-6">Updated</th>
-                  <th className="py-4 px-6 text-right">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100 text-xs font-semibold">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-500">
-                      <Loader2 size={24} className="animate-spin mx-auto text-[#D97706] mb-2" />
-                      <span>Loading health contents...</span>
-                    </td>
-                  </tr>
-                ) : filteredItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
-                      No content found in this category.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredItems.map((item) => {
-                    const isPublished = item.status.toLowerCase() === "published";
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                        {/* Cover Image */}
-                        <td className="py-4 px-6">
-                          <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
-                            {item.image ? (
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-[10px] text-slate-400">No Img</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Category Badge */}
-                        <td className="py-4 px-6">
-                          <span className={`inline-block px-3 py-1 rounded-lg text-[11px] font-bold ${
-                            item.category.toLowerCase().includes("tip") || item.category.toLowerCase().includes("benefit")
-                              ? "bg-blue-50 text-blue-600"
-                              : "bg-emerald-50 text-emerald-600"
-                          }`}>
-                            {item.category}
-                          </span>
-                        </td>
-
-                        {/* Title & Description */}
-                        <td className="py-4 px-6 max-w-xs">
-                          <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
-                          <p className="text-[11px] text-slate-400 font-medium line-clamp-1 mt-0.5">{item.description}</p>
-                        </td>
-
-                        {/* Status Badge */}
-                        <td className="py-4 px-6">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold ${
-                            isPublished ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isPublished ? "bg-emerald-500" : "bg-amber-500"}`} />
-                            {item.status}
-                          </span>
-                        </td>
-
-                        {/* Updated Date */}
-                        <td className="py-4 px-6 text-slate-600 font-medium">
-                          {formatUpdated(item.updated)}
-                        </td>
-
-                        {/* Actions (Only Delete Icon as requested) */}
-                        <td className="py-4 px-6 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                            disabled={deletingId === item.id}
-                            className="p-2 rounded-xl border border-slate-200 hover:border-red-200 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors cursor-pointer inline-flex items-center justify-center disabled:opacity-50"
-                            title="Delete Content"
-                          >
-                            {deletingId === item.id ? (
-                              <Loader2 size={15} className="animate-spin text-red-500" />
-                            ) : (
-                              <Trash2 size={15} />
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* TABLE FOOTER */}
-          <div className="py-4 px-6 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>Showing 1 to {filteredItems.length} entries</span>
-            <div className="flex items-center gap-1">
-              <button className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">Previous</button>
-              <button className="px-3 py-1.5 rounded-lg bg-[#D97706] text-white font-bold">1</button>
-              <button className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">Next</button>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   );

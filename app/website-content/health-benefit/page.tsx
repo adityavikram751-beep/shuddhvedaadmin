@@ -14,8 +14,10 @@ export default function HealthBenefitPage() {
 
       <div className="flex flex-1 flex-col">
         <Header onMenuClick={() => setOpen(true)} />
-        <main className="flex-1 p-6" />
-        <BenefitList/>
+
+        <main className="flex-1 p-6 lg:p-8">
+          <BenefitList />
+        </main>
       </div>
     </div>
   );
