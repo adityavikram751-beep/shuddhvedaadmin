@@ -57,7 +57,17 @@ const navItems: NavItem[] = [
   },
   { label: "Inventory", href: "/inventory", icon: Archive, chevron: false, keyword: "inventory" },
   { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
-  { label: "Subscribe", href: "/subscribe", icon: UserCheck, chevron: false, keyword: "subscribe" },
+  {
+    label: "Subscribe",
+    href: "/subscribe",
+    icon: UserCheck,
+    chevron: true,
+    keyword: "subscribe",
+    subItems: [
+      { label: "Subscribe Plan Update", href: "/subscribe" },
+      { label: "Subscribe Plan Order", href: "/subscribe/delivery-order" },
+    ],
+  },
   // { label: "Influencer Connects", href: "/influencer-connects", icon: Users, chevron: false, keyword: "influencer" },
   { label: "Promotions", href: "/promotion", icon: Tag, chevron: false, keyword: "promotion" },
   {
@@ -93,7 +103,7 @@ function isNavItemActive(pathname: string, item: NavItem): boolean {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>({});
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Logout Handler with POST API
@@ -129,10 +139,30 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const activeGroup = navItems.find((item) => item.subItems && isNavItemActive(pathname, item));
 
+  useEffect(() => {
+    if (activeGroup?.label) {
+      setOpenDropdowns((prev) => {
+        if (prev[activeGroup.label] === undefined) {
+          return { ...prev, [activeGroup.label]: true };
+        }
+        return prev;
+      });
+    }
+  }, [pathname, activeGroup?.label]);
+
   const handleParentClick = (item: NavItem, e: React.MouseEvent) => {
     if (item.subItems && item.subItems.length > 0) {
       e.preventDefault();
-      setExpanded((prev) => (prev === item.label ? null : item.label));
+      setOpenDropdowns((prev) => {
+        const currentlyOpen =
+          prev[item.label] !== undefined
+            ? prev[item.label]
+            : activeGroup?.label === item.label;
+        return {
+          ...prev,
+          [item.label]: !currentlyOpen,
+        };
+      });
     } else {
       onClose();
     }
@@ -197,7 +227,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {navItems.map((item) => {
             const { label, href, icon: Icon, chevron, subItems } = item;
             const isActive = isNavItemActive(pathname, item);
-            const isExpanded = expanded === label || activeGroup?.label === label;
+            const isExpanded =
+              openDropdowns[label] !== undefined
+                ? openDropdowns[label]
+                : activeGroup?.label === label;
             const hasSubItems = !!subItems && subItems.length > 0;
 
             return (
