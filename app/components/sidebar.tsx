@@ -195,28 +195,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         `}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-5 py-5">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/yellow logo.png"
-              alt="ShuddhVeda Logo"
-              width={48}
-              height={48}
-              className="h-12 w-12 object-contain"
-              priority
-            />
-            <div className="min-w-0">
-              <h2 className="text-[18px] font-bold leading-tight text-[#2F241C]">
-                ShuddhVeda
-              </h2>
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#A78B6A]">
-                ADMIN PANEL
-              </p>
-            </div>
-          </div>
+        <div className="relative px-5 py-4 border-b border-gray-100 flex flex-col items-center justify-center text-center">
+          <Image
+            src="/yellow logo.png"
+            alt="ShuddhVeda Logo"
+            width={80}
+            height={80}
+            className="h-16 w-auto object-contain"
+            priority
+          />
           <button
             onClick={onClose}
-            className="md:hidden text-gray-500 hover:text-gray-700"
+            className="md:hidden text-gray-500 hover:text-gray-700 absolute right-4 top-4"
             aria-label="Close sidebar"
           >
             <X size={20} />
