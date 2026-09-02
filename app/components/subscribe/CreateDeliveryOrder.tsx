@@ -26,6 +26,7 @@ import {
   Send,
   Code2,
   Building2,
+  Sparkles,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -172,27 +173,207 @@ const defaultSampleItem: DeliveryOrderItem = {
   reserved_quantity: 1,
   product_details: {
     product: {
-      _id: "6a5f6296653462ef2e5dbf9b",
-      product_name: "Pure Mustard Honey",
-      brand: "SudVeda Honey",
+      _id: "",
+      product_name: "",
+      brand: "ShuddhVeda Honey",
       image: {
-        image_url:
-          "https://res.cloudinary.com/anjp8e9i/image/upload/v1785911046/products/a6bvqwytysado8c2z140.png",
+        image_url: "",
       },
       variant: {
-        _id: "6a5f64b3653462ef2e5dbfa0",
-        weight: 250,
+        _id: "",
+        weight: 0,
         unit: "g",
-        price: 299,
-        mrp: 349,
-        save: 50,
+        price: 0,
+        mrp: 0,
+        save: 0,
       },
     },
-    totalAmount: 299,
-    totalWeight: 250,
-    totalsave: 50,
+    totalAmount: 0,
+    totalWeight: 0,
+    totalsave: 0,
   },
 };
+
+export interface CatalogVariant {
+  _id?: string;
+  id?: string;
+  weight?: number;
+  unit?: string;
+  price?: number;
+  mrp?: number;
+  save?: number;
+}
+
+export interface CatalogProduct {
+  _id?: string;
+  id?: string;
+  product_name?: string;
+  name?: string;
+  brand?: string;
+  image?: {
+    image_url?: string;
+  } | string;
+  image_url?: string;
+  variant?: CatalogVariant;
+  variants?: CatalogVariant[];
+  [key: string]: any;
+}
+
+export function extractVariantsFromProduct(prod: any): CatalogVariant[] {
+  if (!prod) return [];
+  
+  let rawList: any[] = [];
+  if (Array.isArray(prod.variantDocumentId) && prod.variantDocumentId.length > 0) {
+    rawList = prod.variantDocumentId;
+  } else if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+    rawList = prod.variants;
+  } else if (Array.isArray(prod.variant_details) && prod.variant_details.length > 0) {
+    rawList = prod.variant_details;
+  } else if (Array.isArray(prod.productVariants) && prod.productVariants.length > 0) {
+    rawList = prod.productVariants;
+  } else if (Array.isArray(prod.product_variants) && prod.product_variants.length > 0) {
+    rawList = prod.product_variants;
+  } else if (Array.isArray(prod.variant) && prod.variant.length > 0) {
+    rawList = prod.variant;
+  } else if (prod.variant && typeof prod.variant === "object") {
+    rawList = [prod.variant];
+  } else if (Array.isArray(prod.weights) && prod.weights.length > 0) {
+    rawList = prod.weights;
+  } else if (Array.isArray(prod.pack_sizes) && prod.pack_sizes.length > 0) {
+    rawList = prod.pack_sizes;
+  } else {
+    rawList = [
+      {
+        _id: prod._id || prod.id,
+        weight: prod.weight || prod.quantityPerJar || 250,
+        unit: prod.unit || prod.quantityUnit || "g",
+        price: prod.price || prod.sellingPrice || 299,
+        mrp: prod.mrp || prod.originalPrice || 349,
+      },
+    ];
+  }
+
+  return rawList.map((v: any, idx: number) => {
+    const weight = Number(
+      v?.weight ?? v?.size ?? v?.net_weight ?? v?.quantityPerJar ?? prod?.weight ?? 250
+    );
+    const unit = String(
+      v?.unit ?? v?.quantityUnit ?? prod?.unit ?? "g"
+    );
+    const price = Number(
+      v?.price ?? v?.sellingPrice ?? v?.selling_price ?? v?.variant_price ?? prod?.price ?? 299
+    );
+    const mrp = Number(
+      v?.mrp ?? v?.originalPrice ?? v?.original_price ?? price ?? 349
+    );
+    const save = v?.save !== undefined ? Number(v.save) : Math.max(0, mrp - price);
+    const id = String(v?._id || v?.id || v?.variant_id || `var-${idx}`);
+
+    return {
+      _id: id,
+      id: id,
+      weight,
+      unit,
+      price,
+      mrp,
+      save,
+    };
+  });
+}
+
+export function getProductImageByName(name?: string): string {
+  const lower = (name || "").toLowerCase();
+  if (lower.includes("jamun")) {
+    return "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&auto=format&fit=crop&q=80";
+  }
+  if (lower.includes("mustard") || lower.includes("sarson")) {
+    return "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=400&auto=format&fit=crop&q=80";
+  }
+  if (lower.includes("wild") || lower.includes("forest") || lower.includes("flora")) {
+    return "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
+  }
+  return "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
+}
+
+const DEFAULT_HONEY_IMAGE =
+  "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
+
+export function extractProductImageUrl(prod: any, variant?: any): string {
+  let rawUrl = "";
+
+  if (variant) {
+    if (typeof variant.image === "string" && variant.image.trim()) rawUrl = variant.image;
+    else if (variant.image?.image_url) rawUrl = variant.image.image_url;
+    else if (variant.image?.url) rawUrl = variant.image.url;
+    else if (variant.image_url) rawUrl = variant.image_url;
+  }
+
+  if (!rawUrl && prod) {
+    if (typeof prod === "string" && prod.trim()) {
+      rawUrl = prod;
+    } else if (typeof prod === "object") {
+      const candidates = [
+        prod.image,
+        prod.product_image,
+        prod.productImage,
+        prod.image_url,
+        prod.imageUrl,
+        prod.thumbnail,
+        prod.thumbnail_url,
+        prod.main_image,
+        prod.mainImage,
+        prod.cover_image,
+        prod.banner_image,
+      ];
+
+      for (const c of candidates) {
+        if (!c) continue;
+        if (typeof c === "string" && c.trim()) {
+          rawUrl = c;
+          break;
+        }
+        if (typeof c === "object") {
+          if (c.image_url) { rawUrl = c.image_url; break; }
+          if (c.url) { rawUrl = c.url; break; }
+          if (c.secure_url) { rawUrl = c.secure_url; break; }
+          if (c.path) { rawUrl = c.path; break; }
+          if (c.location) { rawUrl = c.location; break; }
+        }
+      }
+
+      if (!rawUrl) {
+        const arrayCandidates = [prod.images, prod.medias, prod.media, prod.imageGallery, prod.gallery];
+        for (const arr of arrayCandidates) {
+          if (Array.isArray(arr) && arr.length > 0) {
+            const first = arr[0];
+            if (typeof first === "string" && first.trim()) { rawUrl = first; break; }
+            if (typeof first === "object" && first) {
+              if (first.image_url) { rawUrl = first.image_url; break; }
+              if (first.url) { rawUrl = first.url; break; }
+              if (first.secure_url) { rawUrl = first.secure_url; break; }
+              if (first.path) { rawUrl = first.path; break; }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (!rawUrl) {
+    return DEFAULT_HONEY_IMAGE;
+  }
+
+  if (
+    rawUrl.startsWith("http://") ||
+    rawUrl.startsWith("https://") ||
+    rawUrl.startsWith("blob:") ||
+    rawUrl.startsWith("data:")
+  ) {
+    return rawUrl;
+  }
+  const cleanPath = rawUrl.replace(/^\//, "");
+  return `${API_BASE_URL}/${cleanPath}`;
+}
 
 export default function SubscribePlanOrders() {
   const [purchasePlans, setPurchasePlans] = useState<PurchasePlanItem[]>([]);
@@ -258,9 +439,117 @@ export default function SubscribePlanOrders() {
     }
   };
 
+  // 🛒 GET API State (Product Details API: /api/admin/plan-orders/product-details)
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogErrorMsg, setCatalogErrorMsg] = useState<string | null>(null);
+
+  // 🌐 GET API Call: Fetch Product Details from /api/admin/plan-orders/product-details
+  const fetchProductDetails = async () => {
+    setLoadingCatalog(true);
+    setCatalogErrorMsg(null);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/admin/plan-orders/product-details`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        let list: CatalogProduct[] = [];
+        if (Array.isArray(json.data)) {
+          list = json.data;
+        } else if (Array.isArray(json.products)) {
+          list = json.products;
+        } else if (Array.isArray(json.product_details)) {
+          list = json.product_details;
+        } else if (Array.isArray(json)) {
+          list = json;
+        } else if (json.data && Array.isArray(json.data.products)) {
+          list = json.data.products;
+        }
+        setCatalogProducts(list);
+      } else {
+        setCatalogErrorMsg(
+          json.message || `Failed to fetch product details (${res.status})`
+        );
+      }
+    } catch (err: any) {
+      console.error("Error fetching product details GET API:", err);
+      setCatalogErrorMsg(
+        err.message || "Failed to fetch product details from server"
+      );
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
+
   useEffect(() => {
     void fetchPurchasePlans();
+    void fetchProductDetails();
   }, []);
+
+  // Helper to select a product from catalog API and populate item details
+  const handleSelectCatalogProduct = (
+    itemIndex: number,
+    prod: CatalogProduct,
+    selectedVariant?: CatalogVariant
+  ) => {
+    setOrderItems((prevItems) => {
+      const newItems = JSON.parse(JSON.stringify(prevItems));
+      const target = newItems[itemIndex];
+      if (!target) return prevItems;
+
+      const prodId = prod._id || prod.id || "";
+      const prodName = prod.product_name || prod.name || "";
+      const brand = prod.brand || "ShuddhVeda Honey";
+      const variants = extractVariantsFromProduct(prod);
+      const v =
+        selectedVariant ||
+        (variants.length > 0 ? variants[0] : null);
+
+      const imageUrl = extractProductImageUrl(prod, v);
+
+      const variantId = v?._id || v?.id || "";
+      const weight = v?.weight !== undefined ? Number(v.weight) : 250;
+      const unit = v?.unit || "g";
+      const price = v?.price !== undefined ? Number(v.price) : 299;
+      const mrp = v?.mrp !== undefined ? Number(v.mrp) : price;
+      const save = v?.save !== undefined ? Number(v.save) : Math.max(0, mrp - price);
+
+      const qty = target.quantity || 1;
+
+      target.product_details = {
+        product: {
+          _id: prodId,
+          product_name: prodName,
+          brand: brand,
+          image: {
+            image_url: imageUrl,
+          },
+          variant: {
+            _id: variantId,
+            weight: weight,
+            unit: unit,
+            price: price,
+            mrp: mrp,
+            save: save,
+          },
+        },
+        totalAmount: price * qty,
+        totalWeight: weight * qty,
+        totalsave: save * qty,
+      };
+
+      return newItems;
+    });
+  };
 
   // When a modal opens or selected item changes, setup POST API form values
   const handleOpenDetailModal = (
@@ -306,7 +595,7 @@ export default function SubscribePlanOrders() {
               product: {
                 _id: p.productId || "6a5f6296653462ef2e5dbf9b",
                 product_name: p.productName || "Pure Mustard Honey",
-                brand: "SudVeda Honey",
+                brand: "ShuddhVeda Honey",
                 image: {
                   image_url:
                     item.plan?.plan_image ||
@@ -1127,20 +1416,20 @@ export default function SubscribePlanOrders() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block font-bold text-gray-700 mb-1">
-                            Plan Purchase ID (planPurchaseId) <span className="text-rose-500">*</span>
+                            Plan Purchase ID <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="text"
                             required
+                            readOnly
                             value={planPurchaseId}
-                            onChange={(e) => setPlanPurchaseId(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-bold outline-none focus:border-[#E69A00] focus:bg-white"
+                            className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-xs font-mono font-bold text-gray-800 outline-none cursor-not-allowed select-all"
                           />
                         </div>
 
                         <div>
                           <label className="block font-bold text-gray-700 mb-1">
-                            Plan Delivery Date (plan_delivery_date) <span className="text-rose-500">*</span>
+                            Plan Delivery Date <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="date"
@@ -1193,208 +1482,181 @@ export default function SubscribePlanOrders() {
                             )}
                           </div>
 
-                          {/* Item Type & Quantities */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Item Type
+                          {/* 🛒 AUTOMATED CATALOG PRODUCT & VARIANT SELECTOR */}
+                          <div className="bg-[#FFFBF0] border border-[#F2D6A7] rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between border-b border-[#F2D6A7]/60 pb-2">
+                              <label className="font-bold text-[#2D2118] text-xs uppercase tracking-wider">
+                                Select Product & Variant
                               </label>
-                              <input
-                                type="text"
-                                value={item.type}
-                                onChange={(e) =>
-                                  updateOrderItem(idx, "type", e.target.value)
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
+                              <div className="flex items-center gap-2">
+                                {loadingCatalog ? (
+                                  <span className="text-[10px] text-amber-700 flex items-center gap-1 font-medium">
+                                    <Loader2 size={12} className="animate-spin text-[#E69A00]" /> Loading products...
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={fetchProductDetails}
+                                    className="text-[10px] text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 underline cursor-pointer"
+                                  >
+                                    <RefreshCw size={10} /> Reload Catalog
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Quantity
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "quantity",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {/* 1. Select Product Dropdown */}
+                              <div>
+                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                  1. Select Product
+                                </label>
+                                <select
+                                  value={item.product_details.product._id || ""}
+                                  onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    const foundProd = catalogProducts.find(
+                                      (p) => (p._id || p.id) === selectedId
+                                    );
+                                    if (foundProd) {
+                                      handleSelectCatalogProduct(idx, foundProd);
+                                    }
+                                  }}
+                                  className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                >
+                                  <option value="">-- Select Product --</option>
+                                  {catalogProducts.map((prod, pIdx) => {
+                                    const id = prod._id || prod.id || `prod-${pIdx}`;
+                                    const name = prod.product_name || prod.name || "Unnamed Product";
+                                    return (
+                                      <option key={id} value={id}>
+                                        {name}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+
+                              {/* 2. Select Variant / Weight Dropdown */}
+                              <div>
+                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                  2. Select Variant / Weight
+                                </label>
+                                {(() => {
+                                  const currentProd =
+                                    catalogProducts.find(
+                                      (p) =>
+                                        String(p._id || p.id || "") ===
+                                        String(item.product_details.product._id || "")
+                                    ) || (catalogProducts.length > 0 ? catalogProducts[0] : null);
+
+                                  const variants = currentProd
+                                    ? extractVariantsFromProduct(currentProd)
+                                    : [];
+
+                                  return (
+                                    <div className="space-y-1.5">
+                                      <select
+                                        value={item.product_details.product.variant._id || ""}
+                                        onChange={(e) => {
+                                          const variantId = e.target.value;
+                                          const foundVariant = variants.find(
+                                            (v) => String(v._id || v.id) === String(variantId)
+                                          );
+                                          if (foundVariant && currentProd) {
+                                            handleSelectCatalogProduct(idx, currentProd, foundVariant);
+                                          }
+                                        }}
+                                        className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                      >
+                                        <option value="">-- Select Variant --</option>
+                                        {variants.map((v, vIdx) => (
+                                          <option key={v._id || v.id || vIdx} value={v._id || v.id}>
+                                            {v.weight}{v.unit} - ₹{v.price}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* 3. Quantity Input */}
+                              <div>
+                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                  3. Jar Quantity
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    updateOrderItem(
+                                      idx,
+                                      "quantity",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Reserved Quantity
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={item.reserved_quantity}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "reserved_quantity",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
+
+                            {catalogErrorMsg && (
+                              <p className="text-[10px] text-rose-600 font-medium pt-1">
+                                Catalog API notice: {catalogErrorMsg}
+                              </p>
+                            )}
                           </div>
 
-                          {/* Product Spec Grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-[#F2E8D9]">
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Product ID (_id)
-                              </label>
-                              <input
-                                type="text"
-                                value={item.product_details.product._id}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "product._id",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-[11px] font-mono outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Product Name
-                              </label>
-                              <input
-                                type="text"
-                                value={item.product_details.product.product_name}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "product.product_name",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Brand
-                              </label>
-                              <input
-                                type="text"
-                                value={item.product_details.product.brand}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "product.brand",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                          </div>
+                          {/* 📋 AUTO-FILLED PRODUCT INFORMATION CARD (ONLY VISIBLE WHEN BOTH PRODUCT & VARIANT ARE SELECTED) */}
+                          {Boolean(item.product_details.product._id && item.product_details.product.variant._id) && (
+                            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                              <div className="border-b border-gray-100 pb-2">
+                                <span className="font-bold text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                  <CheckCircle2 size={15} className="text-emerald-600" />
+                                  Product Details
+                                </span>
+                              </div>
 
-                          {/* Variant Specs */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Weight (e.g. 250)
-                              </label>
-                              <input
-                                type="number"
-                                value={item.product_details.product.variant.weight}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "variant.weight",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Unit (g / kg)
-                              </label>
-                              <input
-                                type="text"
-                                value={item.product_details.product.variant.unit}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "variant.unit",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Unit Price (₹)
-                              </label>
-                              <input
-                                type="number"
-                                value={item.product_details.product.variant.price}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "variant.price",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-gray-700 text-[11px] mb-1">
-                                Unit MRP (₹)
-                              </label>
-                              <input
-                                type="number"
-                                value={item.product_details.product.variant.mrp}
-                                onChange={(e) =>
-                                  updateOrderItem(
-                                    idx,
-                                    "variant.mrp",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:border-[#E69A00]"
-                              />
-                            </div>
-                          </div>
+                              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                {/* Product Info */}
+                                <div>
+                                  <h5 className="font-bold text-gray-900 text-sm">
+                                    {item.product_details.product.product_name || "Select a Product"}
+                                  </h5>
+                                  <p className="text-xs text-gray-500 font-medium">
+                                    Brand: <span className="font-semibold text-gray-700">{item.product_details.product.brand || "ShuddhVeda Honey"}</span>
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
+                                      Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
+                                    </span>
+                                  </div>
+                                </div>
 
-                          {/* Calculated Totals Box */}
-                          <div className="bg-white p-2.5 rounded-lg border border-gray-200 grid grid-cols-3 gap-2 text-center text-[11px] font-semibold text-gray-700">
-                            <div>
-                              Total Amount:{" "}
-                              <span className="text-emerald-700 font-bold">
-                                ₹{item.product_details.totalAmount}
-                              </span>
+                                {/* Price & Amount Breakdown */}
+                                <div className="bg-[#FFFDF9] border border-[#F2E8D9] p-3 rounded-xl min-w-[210px] text-right space-y-1">
+                                  <div className="flex items-center justify-between text-xs gap-3">
+                                    <span className="text-gray-500 font-medium">Unit Price:</span>
+                                    <span className="font-bold text-gray-900">₹{item.product_details.product.variant.price}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs gap-3">
+                                    <span className="text-gray-500 font-medium">Unit MRP:</span>
+                                    <span className="text-gray-400 line-through font-medium">₹{item.product_details.product.variant.mrp}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs gap-3">
+                                    <span className="text-gray-500 font-medium">Discount / Jar:</span>
+                                    <span className="font-bold text-blue-700">₹{item.product_details.product.variant.save}</span>
+                                  </div>
+                                  <div className="border-t border-[#F2E8D9] pt-1.5 mt-1 flex items-center justify-between text-xs gap-3">
+                                    <span className="font-bold text-gray-800">Total ({item.quantity} Jar):</span>
+                                    <span className="font-bold text-emerald-700 text-sm">₹{item.product_details.totalAmount}</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              Total Weight:{" "}
-                              <span className="text-amber-800 font-bold">
-                                {item.product_details.totalWeight}{" "}
-                                {item.product_details.product.variant.unit}
-                              </span>
-                            </div>
-                            <div>
-                              Total Save:{" "}
-                              <span className="text-blue-700 font-bold">
-                                ₹{item.product_details.totalsave}
-                              </span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       ))}
                     </div>
