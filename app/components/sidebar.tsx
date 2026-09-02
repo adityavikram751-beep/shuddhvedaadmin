@@ -57,7 +57,7 @@ const navItems: NavItem[] = [
     ],
   },
   { label: "Inventory", href: "/inventory", icon: Archive, chevron: false, keyword: "inventory" },
-  { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
+  // { label: "Custom Gift Orders", href: "/customgift", icon: Gift, chevron: false, keyword: "gift" },
   {
     label: "Subscribe",
     href: "/subscribe",
