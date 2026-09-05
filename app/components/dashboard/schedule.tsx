@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Plus,
   ShoppingBag,
@@ -25,17 +26,17 @@ import {
 /* ---------------- Quick Actions ---------------- */
 
 const actions = [
-  { label: "Add Product", icon: Plus, color: "#FF7A00", bg: "#FFF1E0" },
-  { label: "Orders", icon: ShoppingBag, color: "#FF7A00", bg: "#FFF1E0" },
-  { label: "Inventory", icon: Box, color: "#22C55E", bg: "#E9FBF0" },
-  { label: "Promotions", icon: Tag, color: "#A855F7", bg: "#F5EEFF" },
-  { label: "Website Content", icon: Monitor, color: "#3B82F6", bg: "#EAF2FF" },
-  { label: "Settings", icon: Settings, color: "#6B7280", bg: "#F2F3F5" },
+  { label: "Add Product", href: "/product/addproduct", icon: Plus, color: "#FF7A00", bg: "#FFF1E0" },
+  { label: "Orders", href: "/order", icon: ShoppingBag, color: "#FF7A00", bg: "#FFF1E0" },
+  { label: "Inventory", href: "/inventory", icon: Box, color: "#22C55E", bg: "#E9FBF0" },
+  { label: "Promotions", href: "/promotion", icon: Tag, color: "#A855F7", bg: "#F5EEFF" },
+  { label: "Website Content", href: "/website-content", icon: Monitor, color: "#3B82F6", bg: "#EAF2FF" },
+  { label: "Settings", href: "/settings", icon: Settings, color: "#6B7280", bg: "#F2F3F5" },
 ];
 
 export function QuickActions() {
   return (
-    <div className=" mt-8 rounded-[22px] bg-white border border-[#F1F1F1] shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-7 py-6 h-full">
+    <div className=" mt-8 rounded-[22px] bg-[#FFFFFF] border border-[#F1F1F1] shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-7 py-6 h-full">
       <h2 className="text-[20px] font-bold text-[#1F1B2D] mb-6">
         Quick Actions
       </h2>
@@ -44,9 +45,10 @@ export function QuickActions() {
         {actions.map((item, i) => {
           const Icon = item.icon;
           return (
-            <button
+            <Link
               key={i}
-              className="flex flex-col items-center gap-2.5 group"
+              href={item.href}
+              className="flex flex-col items-center gap-2.5 group cursor-pointer"
             >
               <div
                 className="flex h-14 w-14 items-center justify-center rounded-2xl transition-transform group-hover:scale-105"
@@ -57,7 +59,7 @@ export function QuickActions() {
               <span className="text-[13px] font-semibold text-[#3A3550] text-center leading-tight">
                 {item.label}
               </span>
-            </button>
+            </Link>
           );
         })}
       </div>

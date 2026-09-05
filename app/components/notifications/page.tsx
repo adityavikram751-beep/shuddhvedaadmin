@@ -11,7 +11,6 @@ import {
   Gift,
   Settings,
   CheckCircle2,
-  ChevronRight,
   Bell,
   Trash2,
   Loader2,
@@ -381,8 +380,6 @@ export default function NotificationsPage() {
                     >
                       <Trash2 size={16} />
                     </button>
-
-                    <ChevronRight size={16} className="text-[#CBD5E1] group-hover:text-[#0F172A] transition-colors" />
                   </div>
                 </div>
               );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Package,
   Calendar,
@@ -27,6 +28,8 @@ import {
   Code2,
   Building2,
   Sparkles,
+  Check,
+  Pencil,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -376,6 +379,7 @@ export function extractProductImageUrl(prod: any, variant?: any): string {
 }
 
 export default function SubscribePlanOrders() {
+  const router = useRouter();
   const [purchasePlans, setPurchasePlans] = useState<PurchasePlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -397,13 +401,21 @@ export default function SubscribePlanOrders() {
   const [orderItems, setOrderItems] = useState<DeliveryOrderItem[]>([
     defaultSampleItem,
   ]);
+  const [collapsedItems, setCollapsedItems] = useState<{ [key: number]: boolean }>({});
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [postSuccessResponse, setPostSuccessResponse] = useState<any>(null);
   const [postErrorMsg, setPostErrorMsg] = useState<string | null>(null);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
 
+  const toggleItemDone = (index: number) => {
+    setCollapsedItems((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
+
   // 🌐 GET API Call: Fetch All Purchase Plan Orders
-  const fetchPurchasePlans = async () => {
+  const fetchPurchasePlans = async (targetPlanId?: string) => {
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -420,12 +432,21 @@ export default function SubscribePlanOrders() {
       );
       const json = await res.json().catch(() => ({}));
       if (res.ok && (json.data || Array.isArray(json))) {
-        const list = Array.isArray(json.data)
+        const list: PurchasePlanItem[] = Array.isArray(json.data)
           ? json.data
           : Array.isArray(json)
           ? json
           : [];
         setPurchasePlans(list);
+
+        if (targetPlanId) {
+          const freshItem = list.find(
+            (p) => p._id === targetPlanId || p.purchase_id === targetPlanId
+          );
+          if (freshItem) {
+            setSelectedItem(freshItem);
+          }
+        }
       } else {
         setErrorMsg(
           json.message || `Failed to fetch purchase plans (${res.status})`
@@ -578,60 +599,9 @@ export default function SubscribePlanOrders() {
     }
     setPlanDeliveryDate(dateStr);
 
-    // Auto populate items if delivery has products
-    if (item.deliveries && item.deliveries.length > 0) {
-      const currentDel =
-        item.deliveries.find(
-          (d) => d.deliveryNumber === item.currentDeliveryNumber
-        ) || item.deliveries[0];
-
-      if (currentDel?.products && currentDel.products.length > 0) {
-        const populatedItems: DeliveryOrderItem[] = currentDel.products.map(
-          (p) => ({
-            type: "PLAN",
-            quantity: p.quantity || 1,
-            reserved_quantity: p.quantity || 1,
-            product_details: {
-              product: {
-                _id: p.productId || "6a5f6296653462ef2e5dbf9b",
-                product_name: p.productName || "Pure Mustard Honey",
-                brand: "ShuddhVeda Honey",
-                image: {
-                  image_url:
-                    item.plan?.plan_image ||
-                    "https://res.cloudinary.com/anjp8e9i/image/upload/v1785911046/products/a6bvqwytysado8c2z140.png",
-                },
-                variant: {
-                  _id: p.variantId || "6a5f64b3653462ef2e5dbfa0",
-                  weight: p.quantityPerJar || 250,
-                  unit: p.quantityUnit || "g",
-                  price: item.plan?.price || 299,
-                  mrp: item.plan?.originalPrice || 349,
-                  save: Math.max(
-                    0,
-                    (item.plan?.originalPrice || 349) -
-                      (item.plan?.price || 299)
-                  ),
-                },
-              },
-              totalAmount: (item.plan?.price || 299) * (p.quantity || 1),
-              totalWeight: (p.quantityPerJar || 250) * (p.quantity || 1),
-              totalsave:
-                Math.max(
-                  0,
-                  (item.plan?.originalPrice || 349) -
-                    (item.plan?.price || 299)
-                ) * (p.quantity || 1),
-            },
-          })
-        );
-        setOrderItems(populatedItems);
-      } else {
-        setOrderItems([defaultSampleItem]);
-      }
-    } else {
-      setOrderItems([defaultSampleItem]);
-    }
+    // Always start Create Plan Delivery Order with a clean empty form for adding new products
+    setOrderItems([JSON.parse(JSON.stringify(defaultSampleItem))]);
+    setCollapsedItems({});
   };
 
   // Helper to calculate totals automatically for an item in the form
@@ -704,6 +674,11 @@ export default function SubscribePlanOrders() {
       return;
     }
     setOrderItems((prev) => prev.filter((_, i) => i !== index));
+    setCollapsedItems((prev) => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
   };
 
   // Get live POST API payload
@@ -749,7 +724,14 @@ export default function SubscribePlanOrders() {
 
       if (res.ok && (json.success || json.data || json.message)) {
         setPostSuccessResponse(json);
-        void fetchPurchasePlans(); // Refresh background table list
+        await fetchPurchasePlans(planPurchaseId);
+        // Reset order item inputs so old data is completely removed and ready for new entries
+        setOrderItems([JSON.parse(JSON.stringify(defaultSampleItem))]);
+        setCollapsedItems({});
+        setTimeout(() => {
+          setActiveTab("deliveries");
+          router.push("/subscribe/delivery-order");
+        }, 600);
       } else {
         setPostErrorMsg(
           json.message ||
@@ -847,7 +829,7 @@ export default function SubscribePlanOrders() {
 
         <button
           type="button"
-          onClick={fetchPurchasePlans}
+          onClick={() => void fetchPurchasePlans()}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-xs rounded-lg border border-gray-200 shadow-2xs transition cursor-pointer shrink-0"
         >
           <RefreshCw
@@ -923,7 +905,7 @@ export default function SubscribePlanOrders() {
           <AlertCircle size={16} className="text-rose-600 shrink-0" />
           <span className="flex-1">{errorMsg}</span>
           <button
-            onClick={fetchPurchasePlans}
+            onClick={() => void fetchPurchasePlans()}
             className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-md transition text-xs"
           >
             Retry
@@ -1461,204 +1443,258 @@ export default function SubscribePlanOrders() {
                         </button>
                       </div>
 
-                      {orderItems.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-[#FFFDF9] border border-[#F2E8D9] rounded-xl p-4 space-y-3 relative"
-                        >
-                          <div className="flex items-center justify-between border-b border-[#F2E8D9] pb-2">
-                            <span className="font-bold text-xs text-[#2D3A1B] uppercase tracking-wider flex items-center gap-1.5">
-                              <Package size={14} className="text-[#E69A00]" /> Product #{idx + 1}
-                            </span>
+                      {orderItems.map((item, idx) => {
+                        const isDone = Boolean(collapsedItems[idx]);
+                        const hasSelectedProduct = Boolean(
+                          item.product_details.product._id &&
+                            item.product_details.product.variant._id
+                        );
 
-                            {orderItems.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveOrderItem(idx)}
-                                className="p-1 text-rose-500 hover:bg-rose-50 rounded transition text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                              >
-                                <Trash2 size={13} /> Remove
-                              </button>
-                            )}
-                          </div>
-
-                          {/* 🛒 AUTOMATED CATALOG PRODUCT & VARIANT SELECTOR */}
-                          <div className="bg-[#FFFBF0] border border-[#F2D6A7] rounded-xl p-4 space-y-3">
-                            <div className="flex items-center justify-between border-b border-[#F2D6A7]/60 pb-2">
-                              <label className="font-bold text-[#2D2118] text-xs uppercase tracking-wider">
-                                Select Product & Variant
-                              </label>
-                              <div className="flex items-center gap-2">
-                                {loadingCatalog ? (
-                                  <span className="text-[10px] text-amber-700 flex items-center gap-1 font-medium">
-                                    <Loader2 size={12} className="animate-spin text-[#E69A00]" /> Loading products...
+                        return (
+                          <div
+                            key={idx}
+                            className="bg-[#FFFDF9] border border-[#F2E8D9] rounded-xl p-4 space-y-3 relative"
+                          >
+                            <div className="flex items-center justify-between border-b border-[#F2E8D9] pb-2">
+                              <span className="font-bold text-xs text-[#2D3A1B] uppercase tracking-wider flex items-center gap-1.5">
+                                <Package size={14} className="text-[#E69A00]" /> Product #{idx + 1}
+                                {isDone && (
+                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold flex items-center gap-1 normal-case tracking-normal">
+                                    <CheckCircle2 size={11} /> Done
                                   </span>
-                                ) : (
+                                )}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                {isDone && (
                                   <button
                                     type="button"
-                                    onClick={fetchProductDetails}
-                                    className="text-[10px] text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 underline cursor-pointer"
+                                    onClick={() => toggleItemDone(idx)}
+                                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] rounded-lg border border-amber-200 transition cursor-pointer flex items-center gap-1"
                                   >
-                                    <RefreshCw size={10} /> Reload Catalog
+                                    <Pencil size={12} /> Edit Selection
+                                  </button>
+                                )}
+
+                                {orderItems.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveOrderItem(idx)}
+                                    className="p-1 text-rose-500 hover:bg-rose-50 rounded transition text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 size={13} /> Remove
                                   </button>
                                 )}
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              {/* 1. Select Product Dropdown */}
-                              <div>
-                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
-                                  1. Select Product
-                                </label>
-                                <select
-                                  value={item.product_details.product._id || ""}
-                                  onChange={(e) => {
-                                    const selectedId = e.target.value;
-                                    const foundProd = catalogProducts.find(
-                                      (p) => (p._id || p.id) === selectedId
-                                    );
-                                    if (foundProd) {
-                                      handleSelectCatalogProduct(idx, foundProd);
-                                    }
-                                  }}
-                                  className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
-                                >
-                                  <option value="">-- Select Product --</option>
-                                  {catalogProducts.map((prod, pIdx) => {
-                                    const id = prod._id || prod.id || `prod-${pIdx}`;
-                                    const name = prod.product_name || prod.name || "Unnamed Product";
-                                    return (
-                                      <option key={id} value={id}>
-                                        {name}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                              </div>
-
-                              {/* 2. Select Variant / Weight Dropdown */}
-                              <div>
-                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
-                                  2. Select Variant / Weight
-                                </label>
-                                {(() => {
-                                  const currentProd =
-                                    catalogProducts.find(
-                                      (p) =>
-                                        String(p._id || p.id || "") ===
-                                        String(item.product_details.product._id || "")
-                                    ) || (catalogProducts.length > 0 ? catalogProducts[0] : null);
-
-                                  const variants = currentProd
-                                    ? extractVariantsFromProduct(currentProd)
-                                    : [];
-
-                                  return (
-                                    <div className="space-y-1.5">
-                                      <select
-                                        value={item.product_details.product.variant._id || ""}
-                                        onChange={(e) => {
-                                          const variantId = e.target.value;
-                                          const foundVariant = variants.find(
-                                            (v) => String(v._id || v.id) === String(variantId)
-                                          );
-                                          if (foundVariant && currentProd) {
-                                            handleSelectCatalogProduct(idx, currentProd, foundVariant);
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                            {/* 🛒 AUTOMATED CATALOG PRODUCT & VARIANT SELECTOR (HIDDEN WHEN DONE IS CLICKED) */}
+                            {!isDone && (
+                              <div className="bg-[#FFFBF0] border border-[#F2D6A7] rounded-xl p-4 space-y-3">
+                                <div className="flex items-center justify-between border-b border-[#F2D6A7]/60 pb-2">
+                                  <label className="font-bold text-[#2D2118] text-xs uppercase tracking-wider">
+                                    Select Product & Variant
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    {loadingCatalog ? (
+                                      <span className="text-[10px] text-amber-700 flex items-center gap-1 font-medium">
+                                        <Loader2 size={12} className="animate-spin text-[#E69A00]" /> Loading products...
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={fetchProductDetails}
+                                        className="text-[10px] text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 underline cursor-pointer"
                                       >
-                                        <option value="">-- Select Variant --</option>
-                                        {variants.map((v, vIdx) => (
-                                          <option key={v._id || v.id || vIdx} value={v._id || v.id}>
-                                            {v.weight}{v.unit} - ₹{v.price}
+                                        <RefreshCw size={10} /> Reload Catalog
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                  {/* 1. Select Product Dropdown */}
+                                  <div>
+                                    <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                      1. Select Product
+                                    </label>
+                                    <select
+                                      value={item.product_details.product._id || ""}
+                                      onChange={(e) => {
+                                        const selectedId = e.target.value;
+                                        const foundProd = catalogProducts.find(
+                                          (p) => (p._id || p.id) === selectedId
+                                        );
+                                        if (foundProd) {
+                                          handleSelectCatalogProduct(idx, foundProd);
+                                        }
+                                      }}
+                                      className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                    >
+                                      <option value="">-- Select Product --</option>
+                                      {catalogProducts.map((prod, pIdx) => {
+                                        const id = prod._id || prod.id || `prod-${pIdx}`;
+                                        const name = prod.product_name || prod.name || "Unnamed Product";
+                                        return (
+                                          <option key={id} value={id}>
+                                            {name}
                                           </option>
-                                        ))}
-                                      </select>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+
+                                  {/* 2. Select Variant / Weight Dropdown */}
+                                  <div>
+                                    <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                      2. Select Variant / Weight
+                                    </label>
+                                    {(() => {
+                                      const currentProd =
+                                        catalogProducts.find(
+                                          (p) =>
+                                            String(p._id || p.id || "") ===
+                                            String(item.product_details.product._id || "")
+                                        ) || (catalogProducts.length > 0 ? catalogProducts[0] : null);
+
+                                      const variants = currentProd
+                                        ? extractVariantsFromProduct(currentProd)
+                                        : [];
+
+                                      return (
+                                        <div className="space-y-1.5">
+                                          <select
+                                            value={item.product_details.product.variant._id || ""}
+                                            onChange={(e) => {
+                                              const variantId = e.target.value;
+                                              const foundVariant = variants.find(
+                                                (v) => String(v._id || v.id) === String(variantId)
+                                              );
+                                              if (foundVariant && currentProd) {
+                                                handleSelectCatalogProduct(idx, currentProd, foundVariant);
+                                              }
+                                            }}
+                                            className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                          >
+                                            <option value="">-- Select Variant --</option>
+                                            {variants.map((v, vIdx) => (
+                                              <option key={v._id || v.id || vIdx} value={v._id || v.id}>
+                                                {v.weight}{v.unit} - ₹{v.price}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+
+                                  {/* 3. Quantity Input */}
+                                  <div>
+                                    <label className="block font-bold text-gray-800 text-[11px] mb-1">
+                                      3. Jar Quantity
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={item.quantity}
+                                      onChange={(e) =>
+                                        updateOrderItem(
+                                          idx,
+                                          "quantity",
+                                          e.target.value
+                                        )
+                                      }
+                                      className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* 🟢 Done Button to hide selection controls */}
+                                <div className="flex items-center justify-end pt-2 border-t border-[#F2D6A7]/60">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!hasSelectedProduct) {
+                                        alert("Please select a product and variant first!");
+                                        return;
+                                      }
+                                      toggleItemDone(idx);
+                                    }}
+                                    className="px-4 py-1.5 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold text-xs rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Check size={14} /> Done
+                                  </button>
+                                </div>
+
+                                {catalogErrorMsg && (
+                                  <p className="text-[10px] text-rose-600 font-medium pt-1">
+                                    Catalog API notice: {catalogErrorMsg}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 📋 AUTO-FILLED PRODUCT INFORMATION CARD (ALWAYS VISIBLE WHEN SELECTED, OR PREVIEWED) */}
+                            {hasSelectedProduct && (
+                              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                                  <span className="font-bold text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                                    <CheckCircle2 size={15} className="text-emerald-600" />
+                                    Product Details
+                                  </span>
+
+                                  {isDone && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleItemDone(idx)}
+                                      className="text-amber-800 hover:text-amber-950 font-bold text-[11px] flex items-center gap-1 underline cursor-pointer"
+                                    >
+                                      <Pencil size={11} /> Change Selection
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                  {/* Product Info */}
+                                  <div>
+                                    <h5 className="font-bold text-gray-900 text-sm">
+                                      {item.product_details.product.product_name || "Select a Product"}
+                                    </h5>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                      Brand: <span className="font-semibold text-gray-700">{item.product_details.product.brand || "ShuddhVeda Honey"}</span>
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
+                                        Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
+                                      </span>
                                     </div>
-                                  );
-                                })()}
-                              </div>
+                                  </div>
 
-                              {/* 3. Quantity Input */}
-                              <div>
-                                <label className="block font-bold text-gray-800 text-[11px] mb-1">
-                                  3. Jar Quantity
-                                </label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={item.quantity}
-                                  onChange={(e) =>
-                                    updateOrderItem(
-                                      idx,
-                                      "quantity",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
-                                />
+                                  {/* Price & Amount Breakdown */}
+                                  <div className="bg-[#FFFDF9] border border-[#F2E8D9] p-3 rounded-xl min-w-[210px] text-right space-y-1">
+                                    <div className="flex items-center justify-between text-xs gap-3">
+                                      <span className="text-gray-500 font-medium">Unit Price:</span>
+                                      <span className="font-bold text-gray-900">₹{item.product_details.product.variant.price}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs gap-3">
+                                      <span className="text-gray-500 font-medium">Unit MRP:</span>
+                                      <span className="text-gray-400 line-through font-medium">₹{item.product_details.product.variant.mrp}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs gap-3">
+                                      <span className="text-gray-500 font-medium">Discount / Jar:</span>
+                                      <span className="font-bold text-blue-700">₹{item.product_details.product.variant.save}</span>
+                                    </div>
+                                    <div className="border-t border-[#F2E8D9] pt-1.5 mt-1 flex items-center justify-between text-xs gap-3">
+                                      <span className="font-bold text-gray-800">Total ({item.quantity} Jar):</span>
+                                      <span className="font-bold text-emerald-700 text-sm">₹{item.product_details.totalAmount}</span>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-
-                            {catalogErrorMsg && (
-                              <p className="text-[10px] text-rose-600 font-medium pt-1">
-                                Catalog API notice: {catalogErrorMsg}
-                              </p>
                             )}
                           </div>
-
-                          {/* 📋 AUTO-FILLED PRODUCT INFORMATION CARD (ONLY VISIBLE WHEN BOTH PRODUCT & VARIANT ARE SELECTED) */}
-                          {Boolean(item.product_details.product._id && item.product_details.product.variant._id) && (
-                            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                              <div className="border-b border-gray-100 pb-2">
-                                <span className="font-bold text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                                  <CheckCircle2 size={15} className="text-emerald-600" />
-                                  Product Details
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                                {/* Product Info */}
-                                <div>
-                                  <h5 className="font-bold text-gray-900 text-sm">
-                                    {item.product_details.product.product_name || "Select a Product"}
-                                  </h5>
-                                  <p className="text-xs text-gray-500 font-medium">
-                                    Brand: <span className="font-semibold text-gray-700">{item.product_details.product.brand || "ShuddhVeda Honey"}</span>
-                                  </p>
-                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
-                                      Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Price & Amount Breakdown */}
-                                <div className="bg-[#FFFDF9] border border-[#F2E8D9] p-3 rounded-xl min-w-[210px] text-right space-y-1">
-                                  <div className="flex items-center justify-between text-xs gap-3">
-                                    <span className="text-gray-500 font-medium">Unit Price:</span>
-                                    <span className="font-bold text-gray-900">₹{item.product_details.product.variant.price}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-xs gap-3">
-                                    <span className="text-gray-500 font-medium">Unit MRP:</span>
-                                    <span className="text-gray-400 line-through font-medium">₹{item.product_details.product.variant.mrp}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-xs gap-3">
-                                    <span className="text-gray-500 font-medium">Discount / Jar:</span>
-                                    <span className="font-bold text-blue-700">₹{item.product_details.product.variant.save}</span>
-                                  </div>
-                                  <div className="border-t border-[#F2E8D9] pt-1.5 mt-1 flex items-center justify-between text-xs gap-3">
-                                    <span className="font-bold text-gray-800">Total ({item.quantity} Jar):</span>
-                                    <span className="font-bold text-emerald-700 text-sm">₹{item.product_details.totalAmount}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* Submit Order Action Button */}
