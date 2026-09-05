@@ -24,7 +24,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/auth";
+import { API_BASE_URL, clearSession } from "@/lib/auth";
 
 interface SubNavItem {
   label: string;
@@ -118,9 +118,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     } catch (error) {
       console.error("Logout API error:", error);
     } finally {
-      localStorage.removeItem("admin_token");
-      localStorage.removeItem("sudhveda_token");
-      localStorage.removeItem("shuddhveda_user");
+      clearSession();
       setIsLoggingOut(false);
       onClose();
       window.location.href = "/";

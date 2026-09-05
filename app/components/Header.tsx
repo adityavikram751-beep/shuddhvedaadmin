@@ -4,7 +4,7 @@ import { Bell, Search, Menu, X, Pencil, ChevronDown, User, Settings as SettingsI
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { API_BASE_URL } from "@/lib/auth";
+import { API_BASE_URL, clearSession } from "@/lib/auth";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -127,13 +127,20 @@ export default function Header({ onMenuClick }: HeaderProps) {
   // Fetch Notifications
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/notification/all`, {
+      const token = typeof window !== "undefined" ? localStorage.getItem("sudhveda_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      // 1. Fetch system notifications
+      const notifRes = await fetch(`${API_BASE_URL}/api/notification/all`, {
         method: "GET",
         credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
+        headers,
+      }).catch(() => null);
 
-      if (res.ok) {
+      let systemNotifs: NotificationItem[] = [];
+      if (notifRes && notifRes.ok) {
+        const data = await notifRes.json().catch(() => ({}));
         const rawList = Array.isArray(data) 
           ? data 
           : Array.isArray(data.data) 
@@ -142,16 +149,55 @@ export default function Header({ onMenuClick }: HeaderProps) {
           ? data.data.notifications
           : [];
 
-        const formatted = rawList.map((item: any) => ({
+        systemNotifs = rawList.map((item: any) => ({
           id: item._id || item.id,
           title: item.title || item.subject || "Notification",
           description: item.description || item.message || "",
           time: new Date(item.createdAt || item.notification_time || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isRead: Boolean(item.is_read || item.isRead || item.seen || item.read),
         }));
-
-        setNotifications(formatted);
       }
+
+      // 2. Fetch order notifications from GET /api/admin/order-dashboard/orders
+      const orderRes = await fetch(`${API_BASE_URL}/api/admin/order-dashboard/orders`, {
+        method: "GET",
+        credentials: "include",
+        headers,
+      }).catch(() => null);
+
+      let orderNotifs: NotificationItem[] = [];
+      if (orderRes && orderRes.ok) {
+        const orderData = await orderRes.json().catch(() => ({}));
+        const rawOrders: any[] = Array.isArray(orderData.data)
+          ? orderData.data
+          : Array.isArray(orderData.orders)
+          ? orderData.orders
+          : Array.isArray(orderData)
+          ? orderData
+          : [];
+
+        orderNotifs = rawOrders.slice(0, 15).map((item: any, idx: number) => {
+          const u = typeof item.userId === "object" && item.userId ? item.userId : typeof item.user === "object" && item.user ? item.user : {};
+          const uName = u.name || item.customer_name || item.customer || "Unknown User";
+          const uMobile = u.mobile || u.phone || item.customer_phone || item.mobile || "Unknown Mobile";
+          const displayId = item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#ORD-${1000 + idx}`);
+          const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
+          const codAmt = og.cod_amount ?? item.cod_amount ?? 0;
+          const finalAmt = og.finalAmount ?? item.finalAmount ?? item.totalAmount ?? item.amount ?? 0;
+          const orderDate = new Date(item.createdAt || item.date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          return {
+            id: `order-notif-${item._id || item.id || idx}`,
+            title: `New Order: ${displayId}`,
+            description: `Customer: ${uName} (${uMobile}) | COD: ₹${codAmt} | Amount: ₹${finalAmt}`,
+            time: orderDate,
+            isRead: false,
+          };
+        });
+      }
+
+      // Merge order notifications with system notifications
+      setNotifications([...orderNotifs, ...systemNotifs]);
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
     }
@@ -176,8 +222,58 @@ export default function Header({ onMenuClick }: HeaderProps) {
       fetchNotifications();
     };
 
+    const handleNewOrder = (data: any) => {
+      console.log("Socket new-order received in Header:", data);
+
+      const title = data?.title || "New Order Received!";
+      const userName = data?.userName || data?.user_name || data?.user?.name || data?.userId?.name || "Unknown User";
+      const userMobile = data?.userMobile || data?.user_mobile || data?.mobile || data?.user?.mobile || data?.userId?.mobile || "Unknown Mobile";
+      const orderIds = data?.orderIds || data?.order_id || data?.id || data?._id || "#ORD";
+      const message = data?.message || data?.orderdetails || "";
+      const codAmount = data?.cod_amount ?? 0;
+      const amount = data?.finalAmount ?? data?.amount ?? 0;
+      const orderDate = data?.orderDate || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      const description = `Customer: ${userName} (${userMobile}) | Order IDs: ${orderIds} | COD: ₹${codAmount} | Amount: ₹${amount}`;
+
+      const newNotif: NotificationItem = {
+        id: String(data?.id || data?._id || Date.now()),
+        title,
+        description,
+        time: orderDate,
+        isRead: false,
+      };
+
+      setNotifications((prev) => [newNotif, ...prev]);
+
+      // Handle DOM #notifications element as requested
+      const container = document.getElementById("notifications");
+      if (container) {
+        const div = document.createElement("div");
+        div.className = "card p-3 rounded-2xl border bg-[#FFFBEB] border-amber-200 transition-all mb-2 cursor-pointer";
+        div.innerHTML = `
+          <h3 style="font-weight:bold; font-size:12px; margin-bottom:4px; color:#0f172a;">${title}</h3>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Customer Name :</b> ${userName}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Customer Mobile :</b> ${userMobile}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Order message :</b> ${message}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Order COD Amount :</b> ${codAmount}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Order IDS :</b> ${orderIds}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>Amount :</b> ${amount}</p>
+          <p style="font-size:11px; color:#334155; margin:2px 0;"><b>OrderInformation :</b> ${data?.orderdetails || message}</p>
+          <p style="font-size:10px; color:#64748b; margin-top:4px;">${orderDate}</p>
+        `;
+        if (!container.querySelector(`[data-socket-id="${newNotif.id}"]`)) {
+          div.setAttribute("data-socket-id", newNotif.id);
+          container.prepend(div);
+        }
+      }
+    };
+
     socket.on("new-notification", handleNewNotification);
     socket.on("notification", handleNewNotification);
+    socket.on("new-order", handleNewOrder);
+    socket.on("newOrder", handleNewOrder);
+    socket.on("order-created", handleNewOrder);
 
     return () => {
       socket.disconnect();
@@ -211,9 +307,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
     } catch (error) {
       console.error("Logout API error:", error);
     } finally {
+      clearSession();
       setIsLoggingOut(false);
       setShowProfileDropdown(false);
-      router.push("/");
+      window.location.href = "/";
     }
   };
 

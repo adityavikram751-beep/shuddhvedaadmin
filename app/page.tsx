@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ShieldCheck,
@@ -25,6 +25,23 @@ function AdminLoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Check if user is already logged in on page load
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const token =
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("sudhveda_token") ||
+        localStorage.getItem("token") ||
+        (document.cookie.match(/(?:^|;\s*)(?:admin_token|sudhveda_token|token)=([^;]*)/)?.[1] || null);
+
+      if (token) {
+        const redirectTo = searchParams.get("redirect") || "/dashboard";
+        const targetUrl = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
+        router.replace(targetUrl);
+      }
+    }
+  }, [router, searchParams]);
 
   // Step 1: Send OTP API Call
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -114,10 +131,20 @@ function AdminLoginForm() {
 
       setSuccessMsg("Login successful! Redirecting to dashboard...");
 
-      // Save localStorage session token upon successful OTP verification
-      const token = data.token || data.data?.token || data.adminToken || "authenticated_admin_session";
+      // Save session token in localStorage & Cookies upon successful OTP verification
+      const token =
+        data.token ||
+        data.data?.token ||
+        data.adminToken ||
+        data.accessToken ||
+        data.data?.accessToken ||
+        "authenticated_admin_session";
+
       localStorage.setItem("admin_token", token);
       localStorage.setItem("sudhveda_token", token);
+      localStorage.setItem("token", token);
+      document.cookie = `admin_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `sudhveda_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
 
       const redirectTo = searchParams.get("redirect") || "/dashboard";
       const targetUrl = redirectTo.startsWith("/") ? redirectTo : "/dashboard";

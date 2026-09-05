@@ -11,17 +11,31 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Login page is public
+    const getStoredToken = () => {
+      if (typeof window === "undefined") return null;
+      const lsToken =
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("sudhveda_token") ||
+        localStorage.getItem("token");
+      if (lsToken) return lsToken;
+
+      const cookieMatch = document.cookie.match(/(?:^|;\s*)(?:admin_token|sudhveda_token|token)=([^;]*)/);
+      return cookieMatch ? cookieMatch[1] : null;
+    };
+
+    const token = getStoredToken();
+
+    // Login page is '/'
     if (pathname === "/") {
-      setAuthorized(true);
-      setChecking(false);
+      if (token) {
+        // If user already has token, automatically redirect to dashboard
+        router.replace("/dashboard");
+      } else {
+        setAuthorized(true);
+        setChecking(false);
+      }
       return;
     }
-
-    // Check if admin token exists in localStorage
-    const token =
-      localStorage.getItem("admin_token") ||
-      localStorage.getItem("sudhveda_token");
 
     if (!token) {
       setAuthorized(false);

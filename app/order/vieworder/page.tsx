@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Sidebar from "@/app/components/sidebar";
 import Header from "@/app/components/Header";
 import ViewOrder from "@/app/components/order/vieworder";
@@ -19,7 +19,9 @@ export default function vieworder() {
         <Header onMenuClick={() => setOpen(true)} />
 
         <main className="flex-1 p-6">
-   <ViewOrder/>
+          <Suspense fallback={<div className="p-8 text-center text-gray-400 font-medium">Loading order details...</div>}>
+            <ViewOrder />
+          </Suspense>
         </main>
       </div>
     </div>

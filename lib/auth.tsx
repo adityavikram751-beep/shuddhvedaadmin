@@ -16,9 +16,19 @@ export function findVerificationId(data: any): string | null {
 // Session Saving Utility
 export function saveSession(sessionData: { user: any; raw?: any }) {
   if (typeof window !== "undefined") {
-    localStorage.setItem("shuddhveda_user", JSON.stringify(sessionData.user));
-    if (sessionData.raw?.token) {
-      localStorage.setItem("sudhveda_token", sessionData.raw.token);
+    if (sessionData.user) {
+      localStorage.setItem("shuddhveda_user", JSON.stringify(sessionData.user));
+    }
+    const token =
+      sessionData.raw?.token ||
+      sessionData.raw?.adminToken ||
+      sessionData.raw?.data?.token ||
+      sessionData.raw?.accessToken;
+    if (token) {
+      localStorage.setItem("sudhveda_token", token);
+      localStorage.setItem("admin_token", token);
+      document.cookie = `admin_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `sudhveda_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
     }
   }
 }
@@ -29,6 +39,9 @@ export function clearSession() {
     localStorage.removeItem("shuddhveda_user");
     localStorage.removeItem("sudhveda_token");
     localStorage.removeItem("admin_token");
+    localStorage.removeItem("token");
+    document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+    document.cookie = "sudhveda_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
   }
 }
 

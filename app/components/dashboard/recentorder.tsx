@@ -14,6 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
+import { io, Socket } from "socket.io-client";
 
 // ---------- Interfaces ----------
 export interface RecentOrderItem {
@@ -217,6 +218,27 @@ export default function RecentOrdersSection() {
   useEffect(() => {
     void fetchScheduledProducts();
     void fetchNotifications();
+
+    const socket: Socket = io(API_BASE_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      socket.emit("join-admin-room");
+    });
+
+    const handleNewOrder = () => {
+      void fetchNotifications();
+    };
+
+    socket.on("new-order", handleNewOrder);
+    socket.on("newOrder", handleNewOrder);
+    socket.on("order-created", handleNewOrder);
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   return (
