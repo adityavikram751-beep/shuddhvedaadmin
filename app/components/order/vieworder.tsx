@@ -22,6 +22,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Loader2,
+  X,
+  MapPin,
+  AlertCircle,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -29,10 +32,15 @@ type OrderStatus = "Pending" | "Confirmed" | "Packed" | "Shipped" | "Cancelled";
 
 interface Product {
   name: string;
+  brand?: string;
+  description?: string;
   variant: string;
   qty: number;
   price: number;
+  mrp?: number;
+  save?: number;
   image: string;
+  cartItemId?: string;
 }
 
 const defaultProducts: Product[] = [
@@ -75,7 +83,7 @@ function loadPdfLibs(): Promise<any> {
 
 export default function OrderDetails() {
   const searchParams = useSearchParams();
-  const queryId = searchParams.get("id");
+  const queryId = searchParams.get("id") || searchParams.get("group_id") || searchParams.get("groupId");
 
   const [loadingOrder, setLoadingOrder] = useState<boolean>(false);
   const [allApiOrders, setAllApiOrders] = useState<any[]>([]);
@@ -87,14 +95,24 @@ export default function OrderDetails() {
     name: string;
     phone: string;
     email: string;
+    shippingName?: string;
+    shippingPhone?: string;
     shippingAddress: string;
+    billingName?: string;
+    billingPhone?: string;
     billingAddress: string;
+    customerNote?: string;
   }>({
-    name: "Priya Sharma",
-    phone: "+91 98765 43210",
-    email: "priyasharma@email.com",
-    shippingAddress: "12, Green Park, Andheri West, Mumbai, Maharashtra 400058, India",
-    billingAddress: "12, Green Park, Andheri West, Mumbai, Maharashtra 400058, India",
+    name: "aditya",
+    phone: "8175022207",
+    email: "",
+    shippingName: "Anoop",
+    shippingPhone: "08377738980",
+    shippingAddress: "Hno-49, Garwa,lambhua, Sultanpur, Hno-49, Sultanpur, Uttar Pradesh, 227304, India",
+    billingName: "Anoop",
+    billingPhone: "08377738980",
+    billingAddress: "Hno-49, Garwa,lambhua, Sultanpur, Garwa,Lambhua,Sultanpur, Sultanpur, Uttar Pradesh, 227304, India",
+    customerNote: "Please deliver during daytime.",
   });
 
   const [orderAmounts, setOrderAmounts] = useState<{
@@ -116,21 +134,27 @@ export default function OrderDetails() {
   });
 
   const [orderMetaData, setOrderMetaData] = useState<{
+    subOrderId: string;
     paymentStatus: string;
     paymentMethod: string;
+    orderStatus: string;
+    inventoryStatus: string;
     trackingNumber: string;
     deliveryMethod: string;
     deliveryPartner: string;
     deliveryCharge: number;
     estimatedDelivery: string;
   }>({
-    paymentStatus: "Paid",
-    paymentMethod: "Online Payment",
+    subOrderId: "SV - 20260822 -7C1A1FA0",
+    paymentStatus: "Pending",
+    paymentMethod: "COD",
+    orderStatus: "Processing",
+    inventoryStatus: "Reserved",
     trackingNumber: "123456789012",
     deliveryMethod: "Standard Delivery",
     deliveryPartner: "Delhivery",
     deliveryCharge: 60,
-    estimatedDelivery: "10 Jul 2026",
+    estimatedDelivery: "3-5 Business Days",
   });
 
   const [productList, setProductList] = useState<Product[]>(defaultProducts);
@@ -147,6 +171,38 @@ export default function OrderDetails() {
   const [toast, setToast] = useState<string | null>(null);
   const [pdfReady, setPdfReady] = useState(false);
   const pdfLoadStarted = useRef(false);
+
+  // Modal State for Confirm Order API integration
+  const [rawGroupId, setRawGroupId] = useState<string>("");
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [pincodeInput, setPincodeInput] = useState<string>("");
+  const [checkingDelivery, setCheckingDelivery] = useState<boolean>(false);
+  const [availableCarriers, setAvailableCarriers] = useState<
+    Array<{
+      carrier_id: string;
+      courier_name: string;
+      display_title: string;
+      rate?: string | number;
+      etd?: string;
+      mode?: string;
+      raw?: any;
+    }>
+  >([]);
+  const [selectedCarrierId, setSelectedCarrierId] = useState<string>("");
+  const [orderGroupIdInput, setOrderGroupIdInput] = useState<string>("");
+  const [dimensions, setDimensions] = useState<{
+    length: number;
+    breadth: number;
+    height: number;
+    weight: number;
+  }>({
+    length: 3,
+    breadth: 1,
+    height: 1,
+    weight: 0.25,
+  });
+  const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   // Calculate pricing breakdown dynamically
   const subtotal = productList.reduce((s, p) => s + p.price * p.qty, 0);
@@ -166,13 +222,19 @@ export default function OrderDetails() {
       item = item.data;
     }
 
+    const ordersList = Array.isArray(item.orders) ? item.orders : [];
+    const firstOrder = ordersList[0] || {};
+
     const displayId =
+      item.group_id ||
+      item.groupId ||
+      firstOrder.order_id ||
       item.orderId ||
       item.order_id ||
       (item._id ? `#ORD-${item._id.slice(-5).toUpperCase()}` : "#ORD-1052");
     setOrderIdLabel(displayId);
 
-    const dateObj = new Date(item.createdAt || item.date || item.orderDate || Date.now());
+    const dateObj = new Date(item.createdAt || firstOrder.createdAt || item.date || item.orderDate || Date.now());
     const dateStr = !isNaN(dateObj.getTime())
       ? `${dateObj.toLocaleDateString("en-IN", {
           day: "2-digit",
@@ -186,73 +248,50 @@ export default function OrderDetails() {
       : "07 Jul 2026 • 10:15 AM";
     setOrderDateLabel(`Placed on ${dateStr}`);
 
-    // Customer details extraction (prioritize userId account details first)
-    const u = typeof item.userId === "object" && item.userId
-      ? item.userId
-      : typeof item.user === "object" && item.user
-      ? item.user
-      : typeof item.user_id === "object" && item.user_id
-      ? item.user_id
-      : {};
-    const c = typeof item.customer === "object" && item.customer ? item.customer : {};
-    const sa = typeof item.shipping_address === "object" && item.shipping_address ? item.shipping_address : typeof item.shippingAddress === "object" && item.shippingAddress ? item.shippingAddress : {};
-    const ba = typeof item.billing_address === "object" && item.billing_address ? item.billing_address : typeof item.billingAddress === "object" && item.billingAddress ? item.billingAddress : {};
+    // Customer details extraction
+    const u =
+      (typeof firstOrder.userId === "object" && firstOrder.userId ? firstOrder.userId : null) ||
+      (typeof item.userId === "object" && item.userId ? item.userId : null) ||
+      (typeof item.customer === "object" && item.customer ? item.customer : null) ||
+      {};
+    const sa =
+      (typeof firstOrder.shipping_address === "object" && firstOrder.shipping_address ? firstOrder.shipping_address : null) ||
+      (typeof item.shipping_address === "object" && item.shipping_address ? item.shipping_address : null) ||
+      {};
+    const ba =
+      (typeof firstOrder.billing_address === "object" && firstOrder.billing_address ? firstOrder.billing_address : null) ||
+      (typeof item.billing_address === "object" && item.billing_address ? item.billing_address : null) ||
+      {};
 
     let name =
       u.name ||
       u.full_name ||
       u.fullName ||
       (u.first_name ? `${u.first_name} ${u.last_name || ""}`.trim() : "") ||
-      c.name ||
-      c.full_name ||
-      c.fullName ||
-      (c.first_name ? `${c.first_name} ${c.last_name || ""}`.trim() : "") ||
-      (typeof item.customer === "string" && item.customer.trim() && item.customer !== "Customer" ? item.customer : "") ||
       sa.full_name ||
       sa.name ||
       sa.fullName ||
-      (sa.first_name ? `${sa.first_name} ${sa.last_name || ""}`.trim() : "") ||
       ba.full_name ||
       ba.name ||
-      item.customer_name ||
-      item.customerName ||
-      item.full_name ||
-      item.fullName ||
+      (typeof item.customer === "string" && item.customer.trim() && item.customer !== "Customer" ? item.customer : "") ||
       "";
 
     let phone =
       u.mobile ||
       u.phone ||
       u.contact ||
-      u.phone_number ||
-      u.phoneNumber ||
-      c.mobile ||
-      c.phone ||
-      c.contact ||
-      c.phone_number ||
-      c.phoneNumber ||
       sa.phone ||
       sa.mobile ||
       sa.contact ||
       ba.phone ||
       ba.mobile ||
-      item.customer_phone ||
-      item.customerPhone ||
-      item.mobile ||
-      item.phone ||
       "";
 
     let email =
       u.email ||
       u.email_address ||
-      u.emailAddress ||
-      c.email ||
-      c.email_address ||
       sa.email ||
       ba.email ||
-      item.customer_email ||
-      item.customerEmail ||
-      item.email ||
       "";
 
     if (!name) name = email ? email.split("@")[0] : phone ? `Customer (${phone.slice(-4)})` : "Guest Customer";
@@ -277,25 +316,148 @@ export default function OrderDetails() {
     if (!shippingAddrStr) shippingAddrStr = billingAddrStr || "-";
     if (!billingAddrStr) billingAddrStr = shippingAddrStr !== "-" ? shippingAddrStr : "-";
 
+    const shippingName = sa.full_name || sa.name || name;
+    const shippingPhone = sa.phone || sa.mobile || phone;
+    const billingName = ba.full_name || ba.name || name;
+    const billingPhone = ba.phone || ba.mobile || phone;
+    const custNote = firstOrder.customer_note || item.customer_note || "";
+
     setCustomerInfo({
       name,
       phone,
       email,
+      shippingName,
+      shippingPhone,
       shippingAddress: shippingAddrStr,
+      billingName,
+      billingPhone,
       billingAddress: billingAddrStr,
+      customerNote: custNote,
     });
 
     const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
 
-    const groupId = og.group_id || item.group_id || item.groupId || "";
+    const groupId = item.group_id || item.groupId || og.group_id || "";
+    
+    const findHex24 = (...vals: any[]): string => {
+      for (const v of vals) {
+        if (!v) continue;
+        const str = typeof v === "object" ? v._id || v.id : String(v);
+        if (typeof str === "string" && /^[0-9a-fA-F]{24}$/.test(str)) {
+          return str;
+        }
+      }
+      return "";
+    };
 
-    const tAmt = Number(og.totalAmount ?? item.totalAmount ?? item.total_amount ?? item.subtotal ?? item.amount ?? 0);
-    const fAmt = Number(og.finalAmount ?? item.finalAmount ?? item.final_amount ?? item.grandTotal ?? item.total ?? 0);
-    const cAmt = Number(og.cod_amount ?? og.codAmount ?? item.cod_amount ?? item.codAmount ?? item.cod_charge ?? item.cod_fee ?? 0);
+    const mongoId =
+      findHex24(
+        item._id,
+        og._id,
+        item.order_group_id,
+        item.ordergoupId,
+        item.id,
+        firstOrder._id,
+        firstOrder.order_group_id,
+        queryId
+      ) || groupId;
+    setRawGroupId(String(mongoId));
 
-    const couponDisc = Number(item.couponDiscount ?? item.coupon_discount ?? item.discount ?? 0);
-    const totalSave = Number(item.totalsave ?? item.total_save ?? item.totalSave ?? item.savings ?? 0);
-    const weight = Number(item.totalWeight ?? item.total_weight ?? item.weight ?? 0);
+    const tAmt = Number(item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? 0);
+    const fAmt = Number(item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? 0);
+    const cAmt = Number(item.cod_amount ?? item.codAmount ?? firstOrder.cod_amount ?? og.cod_amount ?? 0);
+
+    const couponObj = item.coupon || firstOrder.coupon || null;
+    const couponDisc = Number(couponObj?.discountAmount ?? item.couponDiscount ?? item.coupon_discount ?? 0);
+    let totalSave = Number(item.totalsave ?? item.total_save ?? item.totalSave ?? 0);
+    let weight = Number(item.totalWeight ?? item.total_weight ?? item.weight ?? 0);
+
+    // Parse products list
+    let rawProds: any[] = [];
+    if (ordersList.length > 0) {
+      rawProds = ordersList.flatMap((o: any) =>
+        Array.isArray(o.items)
+          ? o.items
+          : Array.isArray(o.products)
+          ? o.products
+          : Array.isArray(o.order_items)
+          ? o.order_items
+          : []
+      );
+    } else {
+      rawProds = Array.isArray(item.products)
+        ? item.products
+        : Array.isArray(item.items)
+        ? item.items
+        : Array.isArray(item.order_items)
+        ? item.order_items
+        : Array.isArray(item.product_details)
+        ? item.product_details
+        : item.plan
+        ? [item.plan]
+        : [];
+    }
+
+    if (rawProds.length > 0) {
+      let weightSum = 0;
+      let saveSum = 0;
+      const parsedProds: Product[] = rawProds.map((p: any) => {
+        const pd = p.product_details || {};
+        const prod = pd.product || p.product || p;
+        const variant = prod.variant || pd.variant || {};
+
+        const pName =
+          prod.product_name ||
+          prod.name ||
+          p.name ||
+          "Wild Forest Multiflora Honey";
+
+        const brand = prod.brand || "";
+        const description = prod.description || "";
+
+        const weightVal = variant.weight || p.variant || p.weight || pd.totalWeight || "";
+        const unitVal = variant.unit || p.unit || "g";
+        const variantStr = weightVal ? (typeof weightVal === "number" ? `${weightVal}${unitVal}` : String(weightVal)) : "250g";
+
+        const qty = Number(p.quantity || p.qty || 1);
+        const price = Number(variant.price || pd.finalAmount || p.price || 0);
+        const mrp = Number(variant.mrp || 0);
+        const save = Number(variant.save || pd.totalsave || 0);
+
+        if (pd.totalWeight) weightSum += Number(pd.totalWeight);
+        else if (typeof weightVal === "number") weightSum += weightVal * qty;
+
+        if (pd.totalsave) saveSum += Number(pd.totalsave);
+        else if (variant.save) saveSum += Number(variant.save) * qty;
+
+        let image =
+          prod.image?.image_url ||
+          prod.image ||
+          p.image_url ||
+          p.image ||
+          "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+        if (typeof image === "object" && image) {
+          image = image.image_url || image.url || "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+        }
+
+        return {
+          name: pName,
+          brand,
+          description,
+          variant: variantStr,
+          qty,
+          price,
+          mrp,
+          save,
+          image,
+          cartItemId: pd.cartItemId || p.cartItemId,
+        };
+      });
+      setProductList(parsedProds);
+
+      if (weightSum > 0) weight = weightSum;
+      if (saveSum > 0) totalSave = saveSum;
+    }
 
     setOrderAmounts({
       groupId,
@@ -308,15 +470,21 @@ export default function OrderDetails() {
     });
 
     // Order Meta
-    const payStatus = item.payment_status || item.payment?.status || "Paid";
-    const payMethod = item.payment_mode || item.payment_method || item.payment?.method || "Online Payment";
-    const tracking = item.trackingNumber || item.tracking_number || item.tracking_id || "123456789012";
-    const courier = item.courier || item.delivery_partner || "Delhivery";
+    const subOrderId = firstOrder.order_id || item.order_id || "";
+    const ordStatus = firstOrder.order_status || item.order_status || item.status || "processing";
+    const invStatus = firstOrder.inventory_status || item.inventory_status || "reserved";
+    const payStatus = item.payment_status || firstOrder.payment_status || item.payment?.status || "pending";
+    const payMethod = (item.payment_mode || firstOrder.payment_mode || item.payment_method || item.payment?.method || "COD").toUpperCase();
+    const tracking = item.trackingNumber || firstOrder.trackingNumber || item.tracking_number || "123456789012";
+    const courier = item.courier || firstOrder.courier || item.delivery_partner || "Delhivery";
     const shippingCharge = Number(item.shipping_charge || item.shippingCharge || 60);
 
     setOrderMetaData({
-      paymentStatus: payStatus,
+      subOrderId,
+      paymentStatus: payStatus.charAt(0).toUpperCase() + payStatus.slice(1).toLowerCase(),
       paymentMethod: payMethod,
+      orderStatus: ordStatus.charAt(0).toUpperCase() + ordStatus.slice(1).toLowerCase(),
+      inventoryStatus: invStatus.charAt(0).toUpperCase() + invStatus.slice(1).toLowerCase(),
       trackingNumber: tracking,
       deliveryMethod: "Standard Delivery",
       deliveryPartner: courier,
@@ -324,41 +492,8 @@ export default function OrderDetails() {
       estimatedDelivery: "3-5 Business Days",
     });
 
-    // Products list
-    const rawProds = Array.isArray(item.products)
-      ? item.products
-      : Array.isArray(item.items)
-      ? item.items
-      : Array.isArray(item.order_items)
-      ? item.order_items
-      : Array.isArray(item.product_details)
-      ? item.product_details
-      : item.plan
-      ? [item.plan]
-      : [];
-
-    if (rawProds.length > 0) {
-      const parsedProds: Product[] = rawProds.map((p: any) => {
-        const pName =
-          p.name ||
-          p.product_name ||
-          p.product_details?.product?.product_name ||
-          p.product?.product_name ||
-          "Honey Jar";
-        const variant = p.variant || p.unit || p.quantityUnit || "250g";
-        const qty = Number(p.quantity || p.qty || 1);
-        const price = Number(p.price || p.sellingPrice || p.product_details?.product?.variant?.price || 249);
-        const image =
-          p.image ||
-          p.product_details?.product?.image?.image_url ||
-          "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
-        return { name: pName, variant, qty, price, image };
-      });
-      setProductList(parsedProds);
-    }
-
     // Status sync
-    const st = String(item.status || item.order_status || "Processing").toLowerCase();
+    const st = String(firstOrder.order_status || item.order_status || item.status || "Pending").toLowerCase();
     if (st.includes("cancel")) {
       setCancelled(true);
       setConfirmed(false);
@@ -374,8 +509,13 @@ export default function OrderDetails() {
       setConfirmed(true);
       setShipped(false);
       setCancelled(false);
-    } else if (st.includes("confirm") || st.includes("process") || st.includes("active")) {
+    } else if (st.includes("confirm")) {
       setConfirmed(true);
+      setPacked(false);
+      setShipped(false);
+      setCancelled(false);
+    } else {
+      setConfirmed(false);
       setPacked(false);
       setShipped(false);
       setCancelled(false);
@@ -395,27 +535,55 @@ export default function OrderDetails() {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      // Try GET API for single order detail: /api/admin/order-dashboard/orders/${id}
       if (queryId) {
-        try {
-          const detailRes = await fetch(`${API_BASE_URL}/api/admin/order-dashboard/orders/${queryId}`, {
-            method: "GET",
-            credentials: "include",
-            headers,
-          });
-          const detailJson = await detailRes.json().catch(() => ({}));
-          if (detailRes.ok && (detailJson.data || detailJson.order || detailJson._id || detailJson.id)) {
-            const singleOrder = detailJson.data?.order || detailJson.order || detailJson.data || detailJson;
-            populateOrderFromData(singleOrder);
-            setLoadingOrder(false);
-            return;
+        const isMongoId = /^[0-9a-fA-F]{24}$/.test(queryId);
+
+        const endpointsToTry: string[] = [
+          `${API_BASE_URL}/api/admin/order-dashboard/orders?group_id=${encodeURIComponent(queryId)}`,
+          `${API_BASE_URL}/api/admin/order-dashboard/orders?groupId=${encodeURIComponent(queryId)}`,
+          `${API_BASE_URL}/api/admin/order-dashboard/orders/group/${encodeURIComponent(queryId)}`,
+          `${API_BASE_URL}/api/admin/order-dashboard/orders?id=${encodeURIComponent(queryId)}`,
+        ];
+
+        if (isMongoId) {
+          endpointsToTry.unshift(`${API_BASE_URL}/api/admin/order-dashboard/orders/${encodeURIComponent(queryId)}`);
+        }
+
+        for (const url of endpointsToTry) {
+          try {
+            const detailRes = await fetch(url, {
+              method: "GET",
+              credentials: "include",
+              headers,
+            });
+            const detailJson = await detailRes.json().catch(() => ({}));
+            
+            if (detailRes.ok && detailJson.success !== false) {
+              const resData = detailJson.data || detailJson.order || detailJson;
+              
+              if (resData) {
+                let targetItem: any = null;
+                if (Array.isArray(resData)) {
+                  targetItem = resData.find(
+                    (o: any) => o.group_id === queryId || o._id === queryId || o.id === queryId
+                  ) || resData[0];
+                } else if (typeof resData === "object" && (resData.group_id || resData.orders || resData._id || resData.items)) {
+                  targetItem = resData;
+                }
+
+                if (targetItem) {
+                  populateOrderFromData(targetItem);
+                  setLoadingOrder(false);
+                  return;
+                }
+              }
+            }
+          } catch (detailErr) {
+            console.log(`Fetch failed for ${url}:`, detailErr);
           }
-        } catch (detailErr) {
-          console.log("Direct order ID API call failed, falling back to list:", detailErr);
         }
       }
 
-      // Fallback: GET /api/admin/order-dashboard/orders
       const res = await fetch(`${API_BASE_URL}/api/admin/order-dashboard/orders`, {
         method: "GET",
         credentials: "include",
@@ -440,6 +608,7 @@ export default function OrderDetails() {
           if (queryId) {
             const foundIdx = rawList.findIndex(
               (o) =>
+                o.group_id === queryId ||
                 o._id === queryId ||
                 o.id === queryId ||
                 o.orderId === queryId ||
@@ -471,6 +640,18 @@ export default function OrderDetails() {
       .catch(() => setPdfReady(false));
   }, []);
 
+  // Lock background body scroll when modal is open
+  useEffect(() => {
+    if (showConfirmModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [showConfirmModal]);
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
@@ -495,10 +676,204 @@ export default function OrderDetails() {
     ? "Confirmed"
     : "Pending";
 
+  const openConfirmOrderModal = () => {
+    const matchPincode =
+      customerInfo.shippingAddress.match(/\b\d{6}\b/) || customerInfo.billingAddress.match(/\b\d{6}\b/);
+    const detectedPincode = matchPincode ? matchPincode[0] : "";
+    setPincodeInput(detectedPincode);
+
+    const targetGroupId = rawGroupId || orderAmounts.groupId || queryId || "";
+    setOrderGroupIdInput(targetGroupId);
+
+    setAvailableCarriers([]);
+    setSelectedCarrierId("");
+    setModalError(null);
+
+    setShowConfirmModal(true);
+  };
+
+  const checkDeliveryAvailability = async (pincodeToTest?: string) => {
+    const pin = pincodeToTest || pincodeInput;
+    if (!pin || pin.trim().length === 0) {
+      setModalError("Please enter a valid 6-digit pincode.");
+      return;
+    }
+
+    setCheckingDelivery(true);
+    setModalError(null);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("sudhveda_token") : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const pinStr = pin.trim();
+
+      const res = await fetch(`${API_BASE_URL}/api/order-service/checkdeliveryavailabilitybyadmin`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ pincode: pinStr }),
+      });
+
+      const resJson = await res.json().catch(() => ({}));
+
+      if (
+        res &&
+        res.ok &&
+        resJson &&
+        (Array.isArray(resJson.serviceability_results) ||
+          Array.isArray(resJson.data?.serviceability_results) ||
+          resJson.success !== false)
+      ) {
+        let list: any[] = [];
+        if (Array.isArray(resJson.serviceability_results)) {
+          list = resJson.serviceability_results;
+        } else if (resJson.data && Array.isArray(resJson.data.serviceability_results)) {
+          list = resJson.data.serviceability_results;
+        } else if (Array.isArray(resJson.data)) {
+          list = resJson.data;
+        } else if (Array.isArray(resJson.carriers)) {
+          list = resJson.carriers;
+        } else if (resJson.data && Array.isArray(resJson.data.available_courier_companies)) {
+          list = resJson.data.available_courier_companies;
+        } else if (resJson.data && Array.isArray(resJson.data.carriers)) {
+          list = resJson.data.carriers;
+        } else if (resJson.data && typeof resJson.data === "object") {
+          const firstArray = Object.values(resJson.data).find((val) => Array.isArray(val));
+          if (firstArray) list = firstArray as any[];
+        }
+
+        const formatted = list.map((item: any, i: number) => {
+          const cId = String(
+            item.carrier_id ??
+              item.courier_company_id ??
+              item.id ??
+              item.carrierId ??
+              item.code ??
+              item.courier_name ??
+              `carrier_${i + 1}`
+          );
+          const cName = String(
+            item.carrier_name ??
+              item.courier_name ??
+              item.name ??
+              item.title ??
+              item.courier_company_name ??
+              `Carrier ${cId}`
+          );
+          const etd =
+            item.expected_delivery_date ??
+            item.etd ??
+            item.estimated_delivery_days ??
+            item.delivery_performance;
+          const rate = item.rate ?? item.freight_charge ?? item.cost ?? item.rate_total ?? item.charge;
+          const mode = item.mode ?? item.transport_mode;
+
+          let displayTitle = cName;
+          if (etd) displayTitle += ` (EST: ${etd})`;
+          if (mode) displayTitle += ` [${mode}]`;
+          if (rate !== undefined && rate !== null) displayTitle += ` - ₹${rate}`;
+
+          return {
+            carrier_id: cId,
+            courier_name: cName,
+            display_title: displayTitle,
+            rate,
+            etd: etd ? String(etd) : undefined,
+            mode: mode ? String(mode) : undefined,
+            raw: item,
+          };
+        });
+
+        setAvailableCarriers(formatted);
+        if (formatted.length > 0) {
+          setSelectedCarrierId(formatted[0].carrier_id);
+        } else {
+          setModalError("No delivery carriers available for this pincode.");
+        }
+      } else {
+        const errMsg = resJson.message || resJson.error || "Failed to fetch delivery availability from server.";
+        setModalError(`Server Error (${resJson.statusCode || resJson.error || 500}): ${errMsg}`);
+        setAvailableCarriers([]);
+      }
+    } catch (err: any) {
+      console.error("Delivery availability error:", err);
+      setModalError(`Delivery availability error: ${err.message || "Failed to check delivery availability."}`);
+      setAvailableCarriers([]);
+    } finally {
+      setCheckingDelivery(false);
+    }
+  };
+
+  const handleCreateOrderByAdmin = async () => {
+    if (!pincodeInput.trim()) {
+      setModalError("Pincode is required.");
+      return;
+    }
+    if (!selectedCarrierId) {
+      setModalError("Please select an available carrier from the dropdown.");
+      return;
+    }
+    if (!orderGroupIdInput.trim()) {
+      setModalError("Order Group ID is required.");
+      return;
+    }
+
+    setSubmittingOrder(true);
+    setModalError(null);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("sudhveda_token") : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const payload = {
+        ordergoupId: orderGroupIdInput.trim(),
+        carrier_id: selectedCarrierId.trim(),
+        length: Number(dimensions.length),
+        breadth: Number(dimensions.breadth),
+        height: Number(dimensions.height),
+        weight: Number(dimensions.weight),
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/order-service/createorderbyadmin`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const resJson = await res.json().catch(() => ({}));
+
+      if (res.ok && resJson.success !== false) {
+        showToast("Order created & confirmed successfully!");
+        setConfirmed(true);
+        setConfirmedAt(now());
+        setShowConfirmModal(false);
+      } else {
+        setModalError(resJson.message || resJson.error || "Failed to create order by admin.");
+      }
+    } catch (err: any) {
+      console.error("Create order by admin error:", err);
+      setModalError(err.message || "Failed to submit order.");
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
   const handleConfirm = () => {
-    setConfirmed(true);
-    setConfirmedAt(now());
-    showToast("Order confirmed successfully.");
+    openConfirmOrderModal();
   };
   const handlePack = () => {
     setPacked(true);
@@ -638,7 +1013,13 @@ export default function OrderDetails() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order {orderIdLabel}</h1>
-            <span className="px-3 py-0.5 rounded-full text-xs font-semibold bg-[#fef9c3] text-[#a16207]">
+            <span className={`px-3 py-0.5 rounded-full text-xs font-bold border transition-colors ${
+              status === "Confirmed" || status === "Shipped" || status === "Packed"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : status === "Cancelled"
+                ? "bg-red-50 text-red-700 border-red-200"
+                : "bg-amber-50 text-amber-700 border-amber-200"
+            }`}>
               {status}
             </span>
             {loadingOrder && <Loader2 size={16} className="animate-spin text-orange-500" />}
@@ -678,7 +1059,7 @@ export default function OrderDetails() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Customer Details
+                  Account Details
                 </p>
                 <div className="flex items-center gap-2">
                   <p className="font-bold text-slate-900 text-base">{customerInfo.name}</p>
@@ -705,6 +1086,11 @@ export default function OrderDetails() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                   Shipping Address
                 </p>
+                {customerInfo.shippingName && (
+                  <p className="font-bold text-slate-800 text-xs mb-0.5">
+                    {customerInfo.shippingName} {customerInfo.shippingPhone ? `(${customerInfo.shippingPhone})` : ""}
+                  </p>
+                )}
                 <p className="text-xs text-slate-600 leading-relaxed font-medium">
                   {customerInfo.shippingAddress}
                 </p>
@@ -714,11 +1100,26 @@ export default function OrderDetails() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                   Billing Address
                 </p>
+                {customerInfo.billingName && (
+                  <p className="font-bold text-slate-800 text-xs mb-0.5">
+                    {customerInfo.billingName} {customerInfo.billingPhone ? `(${customerInfo.billingPhone})` : ""}
+                  </p>
+                )}
                 <p className="text-xs text-slate-600 leading-relaxed font-medium">
                   {customerInfo.billingAddress}
                 </p>
               </div>
             </div>
+
+            {customerInfo.customerNote && (
+              <div className="mt-5 pt-4 border-t border-slate-100 bg-amber-50/60 rounded-xl p-3.5 border border-amber-200/50 flex items-start gap-2.5">
+                <FileText size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Customer Note</p>
+                  <p className="text-xs text-amber-900 font-medium italic mt-0.5">"{customerInfo.customerNote}"</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Order Info Card */}
@@ -729,25 +1130,43 @@ export default function OrderDetails() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-5 gap-x-6 text-xs">
               <div>
-                <p className="text-slate-400 font-medium mb-1">Order ID</p>
-                <p className="font-bold text-slate-900">{orderIdLabel}</p>
+                <p className="text-slate-400 font-medium mb-1">Group ID</p>
+                <p className="font-bold text-slate-900">{orderAmounts.groupId || orderIdLabel}</p>
               </div>
-              {orderAmounts.groupId && (
+              {orderMetaData.subOrderId && (
                 <div>
-                  <p className="text-slate-400 font-medium mb-1">Group ID</p>
-                  <p className="font-bold text-slate-900">{orderAmounts.groupId}</p>
+                  <p className="text-slate-400 font-medium mb-1">Order ID</p>
+                  <p className="font-bold text-slate-900">{orderMetaData.subOrderId}</p>
                 </div>
               )}
               <div>
                 <p className="text-slate-400 font-medium mb-1">Payment Status</p>
-                <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full text-[11px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span className="inline-flex items-center gap-1.5 font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full text-[11px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   {orderMetaData.paymentStatus}
                 </span>
               </div>
               <div>
-                <p className="text-slate-400 font-medium mb-1">Tracking Number</p>
-                <p className="font-bold text-slate-900">{orderMetaData.trackingNumber}</p>
+                <p className="text-slate-400 font-medium mb-1">Payment Method</p>
+                <p className="font-bold text-slate-900">{orderMetaData.paymentMethod}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 font-medium mb-1">Order Status</p>
+                <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${
+                  confirmed || orderMetaData.orderStatus.toLowerCase().includes("confirm") || orderMetaData.orderStatus.toLowerCase().includes("ship") || orderMetaData.orderStatus.toLowerCase().includes("pack")
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : orderMetaData.orderStatus.toLowerCase().includes("cancel")
+                    ? "bg-red-50 text-red-700 border-red-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200"
+                }`}>
+                  {confirmed ? "Confirmed" : orderMetaData.orderStatus}
+                </span>
+              </div>
+              <div>
+                <p className="text-slate-400 font-medium mb-1">Inventory Status</p>
+                <span className="inline-flex items-center gap-1.5 font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full text-[11px]">
+                  {orderMetaData.inventoryStatus}
+                </span>
               </div>
               <div>
                 <p className="text-slate-400 font-medium mb-1">Order Date</p>
@@ -759,22 +1178,6 @@ export default function OrderDetails() {
                   <p className="font-bold text-slate-900">{orderAmounts.totalWeight}g</p>
                 </div>
               )}
-              <div>
-                <p className="text-slate-400 font-medium mb-1">Delivery Method</p>
-                <p className="font-bold text-slate-900">{orderMetaData.deliveryMethod}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 font-medium mb-1">Estimated Delivery</p>
-                <p className="font-bold text-slate-900">{orderMetaData.estimatedDelivery}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 font-medium mb-1">Payment Method</p>
-                <p className="font-bold text-slate-900">{orderMetaData.paymentMethod}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 font-medium mb-1">Delivery Partner</p>
-                <p className="font-bold text-slate-900">{orderMetaData.deliveryPartner}</p>
-              </div>
               <div>
                 <p className="text-slate-400 font-medium mb-1">Total Amount</p>
                 <p className="font-bold text-slate-900">
@@ -823,23 +1226,48 @@ export default function OrderDetails() {
                   {productList.map((p, i) => (
                     <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-start gap-3">
                           <img
                             src={p.image}
                             alt={p.name}
-                            className="w-11 h-11 rounded-lg object-cover bg-amber-50 shrink-0"
+                            className="w-12 h-12 rounded-xl object-cover bg-amber-50 shrink-0 border border-amber-100 shadow-sm"
                           />
-                          <div>
-                            <p className="font-bold text-slate-800">{p.name}</p>
-                            <p className="text-[11px] text-slate-400">Glass Jar</p>
+                          <div className="min-w-0 flex items-center">
+                            <p className="font-bold text-slate-800 text-sm leading-snug">{p.name}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-600">{p.variant}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">{p.qty}</td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">₹{p.price.toFixed(2)}</td>
-                      <td className="px-6 py-4 font-bold text-slate-900">
-                        ₹{(p.price * p.qty).toFixed(2)}
+                      <td className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                        <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">
+                          {p.variant}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                        <span className="px-2 py-1 bg-orange-50 text-orange-600 font-bold text-xs rounded-md">
+                          Qty: {p.qty}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800 text-xs">₹{p.price.toFixed(2)}</span>
+                          {p.mrp && p.mrp > p.price ? (
+                            <span className="text-[11px] text-slate-400 line-through">
+                              ₹{p.mrp.toFixed(2)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900 text-sm">
+                            ₹{(p.price * p.qty).toFixed(2)}
+                          </span>
+                          {p.save && p.save > 0 ? (
+                            <span className="text-[10px] font-semibold text-emerald-600">
+                              Saved ₹{(p.save * p.qty).toFixed(2)}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -894,15 +1322,15 @@ export default function OrderDetails() {
             <div className="space-y-3">
               <button
                 onClick={handleConfirm}
-                disabled={confirmed || cancelled}
+                disabled={cancelled}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                  confirmed || cancelled
+                  cancelled
                     ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                    : "bg-[#d97706] text-white hover:bg-[#b45309]"
+                    : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98]"
                 }`}
               >
                 <CheckCircle2 size={15} />
-                {confirmed ? "Order Confirmed" : "Confirm Order"}
+                {confirmed ? "Confirm / Dispatch Order" : "Confirm Order"}
               </button>
 
               <button
@@ -1022,6 +1450,279 @@ export default function OrderDetails() {
           <ArrowRight size={14} />
         </button>
       </div>
+
+      {/* Confirm Order & Check Delivery Availability Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white">
+              <div className="flex items-center gap-2.5">
+                <Truck size={20} className="text-amber-100" />
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Confirm & Create Order</h3>
+                  <p className="text-xs text-amber-100/90 font-medium">Verify pincode and assign shipping carrier</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="p-1.5 rounded-lg hover:bg-white/20 text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-700">
+              {modalError && (
+                <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  <p className="font-semibold leading-normal">{modalError}</p>
+                </div>
+              )}
+
+              {/* Order Product Preview Card */}
+              {productList.length > 0 && (
+                <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-amber-200/50">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                      <Box size={14} className="text-amber-600" />
+                      Ordered Products ({productList.length})
+                    </span>
+                    <span className="text-xs font-black text-slate-900">
+                      Total: ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : subtotal).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-amber-200/50">
+                    {productList.map((p, i) => (
+                      <div key={i} className="flex items-start gap-3 pt-2.5 first:pt-0">
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-12 h-12 rounded-xl object-cover bg-white shrink-0 border border-amber-200 shadow-sm"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="font-bold text-slate-900 text-xs leading-snug">{p.name}</p>
+                          <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 pt-0.5">
+                            <span className="bg-white border border-slate-200 px-1.5 py-0.2 rounded text-slate-700">
+                              {p.variant}
+                            </span>
+                            <span>•</span>
+                            <span className="text-orange-600 font-bold bg-orange-50 px-1.5 py-0.2 rounded">
+                              Qty: {p.qty}
+                            </span>
+                            <span>•</span>
+                            <span className="font-bold text-slate-900">₹{(p.price * p.qty).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Order Group ID */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Order Group ID (<code className="text-orange-600">ordergoupId</code>)
+                </label>
+                <input
+                  type="text"
+                  value={orderGroupIdInput}
+                  onChange={(e) => setOrderGroupIdInput(e.target.value)}
+                  placeholder="e.g. 6a89901e96dc866c22bd6394"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-amber-500 font-mono text-xs font-bold text-slate-800 outline-none transition-all"
+                />
+              </div>
+
+              {/* Delivery Pincode */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Delivery Pincode
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <MapPin size={15} className="absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      value={pincodeInput}
+                      onChange={(e) => setPincodeInput(e.target.value)}
+                      placeholder="Enter 6-digit Pincode"
+                      maxLength={6}
+                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 font-semibold text-xs text-slate-800 outline-none transition-all"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => checkDeliveryAvailability()}
+                    disabled={checkingDelivery || !pincodeInput.trim()}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 text-white font-bold rounded-xl transition-all shadow-sm shrink-0"
+                  >
+                    {checkingDelivery ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      "Check Availability"
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Available Carriers Dropdown */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Available Carriers / Couriers ({availableCarriers.length})
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedCarrierId}
+                    onChange={(e) => setSelectedCarrierId(e.target.value)}
+                    disabled={checkingDelivery || availableCarriers.length === 0}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:border-amber-500 font-semibold text-xs text-slate-800 outline-none transition-all appearance-none cursor-pointer disabled:bg-slate-50 disabled:cursor-not-allowed"
+                  >
+                    {availableCarriers.length === 0 ? (
+                      <option value="">
+                        {checkingDelivery ? "Checking availability..." : "-- Check Pincode to view carriers --"}
+                      </option>
+                    ) : (
+                      availableCarriers.map((c) => (
+                        <option key={c.carrier_id} value={c.carrier_id}>
+                          {c.display_title} (ID: {c.carrier_id})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <ChevronRight size={14} className="absolute right-3 top-3.5 rotate-90 text-slate-400 pointer-events-none" />
+                </div>
+
+                {/* Rich Carrier Cards View */}
+                {availableCarriers.length > 0 && (
+                  <div className="mt-2.5 space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {availableCarriers.map((c) => {
+                      const isSelected = selectedCarrierId === c.carrier_id;
+                      return (
+                        <div
+                          key={c.carrier_id}
+                          onClick={() => setSelectedCarrierId(c.carrier_id)}
+                          className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                            isSelected
+                              ? "border-amber-500 bg-amber-50/80 text-slate-900 shadow-sm font-bold"
+                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-medium"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                isSelected ? "border-amber-600 bg-amber-600 text-white" : "border-slate-300"
+                              }`}
+                            >
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800 text-xs">
+                                {c.courier_name} {c.mode ? <span className="text-[10px] text-amber-700 bg-amber-100/60 px-1.5 py-0.5 rounded ml-1 font-semibold">{c.mode}</span> : null}
+                              </p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                Carrier ID: <span className="font-mono font-semibold">{c.carrier_id}</span>
+                                {c.etd ? ` • EST: ${c.etd}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          {c.rate !== undefined && c.rate !== null && (
+                            <span className="text-amber-700 bg-amber-100/80 px-2.5 py-1 rounded-lg font-extrabold text-xs shrink-0">
+                              ₹{c.rate}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Package Dimensions & Weight */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Package Dimensions & Weight
+                </label>
+                <div className="grid grid-cols-4 gap-2.5">
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 block mb-1">Length (cm)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={dimensions.length}
+                      onChange={(e) => setDimensions({ ...dimensions, length: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 block mb-1">Breadth (cm)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={dimensions.breadth}
+                      onChange={(e) => setDimensions({ ...dimensions, breadth: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 block mb-1">Height (cm)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={dimensions.height}
+                      onChange={(e) => setDimensions({ ...dimensions, height: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 block mb-1">Weight (kg)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={dimensions.weight}
+                      onChange={(e) => setDimensions({ ...dimensions, weight: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-slate-50 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-100 transition-all text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateOrderByAdmin}
+                disabled={submittingOrder || !selectedCarrierId || !orderGroupIdInput.trim()}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-md text-xs"
+              >
+                {submittingOrder ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    Submitting Order...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={15} />
+                    Confirm & Create Order
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

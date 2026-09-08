@@ -12,12 +12,14 @@ import {
   ChevronRight,
   Check,
   Loader2,
+  Box,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 import { io, Socket } from "socket.io-client";
 
 interface Order {
   rawId?: string;
+  groupId?: string;
   id: string;
   customer: string;
   phone: string;
@@ -34,8 +36,10 @@ interface Order {
     image?: string;
     bold?: boolean;
   }[];
+  orderCount?: number;
   moreCount?: number;
   amount: string;
+  codAmount?: number;
   date: string;
   time: string;
   raw?: any;
@@ -138,7 +142,7 @@ function extractCustomerDetails(rawItem: any, index: number): { name: string; ph
     item.emailAddress ||
     "";
 
-  if ((!name || name === "Customer") || !phone || !email) {
+  if ((!name || name === "Customer") || !phone) {
     for (const key of Object.keys(item)) {
       const val = item[key];
       if (val && typeof val === "object" && !Array.isArray(val)) {
@@ -166,35 +170,34 @@ function extractCustomerDetails(rawItem: any, index: number): { name: string; ph
     }
   }
 
-  if (!phone) {
-    const fallbackMobiles = ["98765 43210", "98765 12345", "98765 88765", "98765 22221", "98765 33332"];
-    phone = fallbackMobiles[index % 5];
-  }
-
   return { name, phone, email };
 }
 
 function mapApiOrderToUiOrder(item: any, index: number): Order {
-  const rawId = String(item._id || item.id || item.orderId || item.order_id || item.purchase_id || `order-${index}`);
-  const displayId = item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#SV${10254 + index}`);
+  const mongoId = String(item._id || item.id || item.group_id || item.orderId || item.order_id || item.purchase_id || `order-${index}`);
+  const groupId = String(item.group_id || item.groupId || item.order_group_id || "");
+  const displayId = String(item.group_id || item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#SV${10254 + index}`));
 
   const { name: customerName, phone: customerPhone, email: customerEmail } = extractCustomerDetails(item, index);
 
-  const payMode = item.payment_mode || item.payment_method || item.payment?.method || item.paymentMethod || "UPI";
-  const payStatus = item.payment_status || item.payment?.status || item.paymentStatus || "Paid";
+  const payMode = String(item.payment_mode || item.payment_method || item.payment?.method || item.paymentMethod || "COD").toUpperCase();
+  const payStatusRaw = String(item.payment_status || item.payment?.status || item.paymentStatus || "pending").toLowerCase();
+  const payStatus = payStatusRaw.charAt(0).toUpperCase() + payStatusRaw.slice(1);
   
   let paymentText = `${payStatus} (${payMode})`;
-  if (payMode.toUpperCase() === "COD") {
+  if (payMode === "COD") {
     paymentText = "COD";
-  } else if (payStatus.toLowerCase() === "refunded") {
+  } else if (payStatusRaw === "refunded") {
     paymentText = "Refunded";
   }
 
-  let paymentDot = "bg-emerald-500";
-  if (payStatus.toLowerCase() === "refunded") {
+  let paymentDot = "bg-[#d97706]";
+  if (payStatusRaw === "refunded") {
     paymentDot = "bg-red-500";
-  } else if (payMode.toUpperCase() === "COD" || payStatus.toLowerCase() === "pending") {
-    paymentDot = "bg-blue-500";
+  } else if (payStatusRaw === "paid" || payStatusRaw === "success") {
+    paymentDot = "bg-emerald-500";
+  } else if (payMode === "COD" || payStatusRaw === "pending") {
+    paymentDot = "bg-amber-500";
   }
 
   const st = String(item.status || item.order_status || item.delivery_status || "Processing").toLowerCase();
@@ -205,6 +208,11 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   else if (st.includes("cancel") || st.includes("refund")) status = "Cancelled";
   else if (st.includes("process") || st.includes("active") || st.includes("pending")) status = "Processing";
 
+  const ordersArr = Array.isArray(item.orders) ? item.orders : [];
+  const itemsFromOrders = ordersArr.flatMap((o: any) =>
+    Array.isArray(o.items) ? o.items : Array.isArray(o.products) ? o.products : []
+  );
+
   const rawProducts = Array.isArray(item.products)
     ? item.products
     : Array.isArray(item.items)
@@ -213,33 +221,30 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     ? item.order_items
     : Array.isArray(item.product_details)
     ? item.product_details
-    : item.plan
-    ? [item.plan]
-    : [];
+    : itemsFromOrders;
+
+  const orderCount = Number(item.orderCount ?? item.order_count ?? ordersArr.length ?? (rawProducts.length > 0 ? 1 : 0));
 
   let productsList: Order["products"] = [];
   if (rawProducts.length > 0) {
     productsList = rawProducts.slice(0, 2).map((p: any, idx: number) => {
+      const pObj = p.product_details?.product || p.product || p;
       const pName =
+        pObj.product_name ||
+        pObj.name ||
         p.name ||
-        p.product_name ||
-        p.product_details?.product?.product_name ||
-        p.product?.product_name ||
-        p.plan?.name ||
         "Wild Forest Multiflora Honey";
 
-      const weight = p.variant || p.weight || p.quantityUnit || p.unit || p.product_details?.product?.variant?.weight || "";
-      const unit = p.unit || p.quantityUnit || p.product_details?.product?.variant?.unit || "";
-      const variantStr = weight ? (typeof weight === "number" ? `${weight}${unit || "g"}` : String(weight)) : "1kg";
+      const weight = pObj.variant?.weight || p.variant || p.weight || p.quantityUnit || p.unit || "";
+      const unit = pObj.variant?.unit || p.unit || p.quantityUnit || "";
+      const variantStr = weight ? (typeof weight === "number" ? `${weight}${unit || "g"}` : String(weight)) : "";
 
       const qty = Number(p.quantity || p.qty || 1);
 
       let rawImg =
+        pObj.image?.image_url ||
         p.image ||
         p.image_url ||
-        p.product_details?.product?.image?.image_url ||
-        p.product?.image?.image_url ||
-        p.product_image ||
         "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
 
       if (typeof rawImg === "object" && rawImg) {
@@ -254,21 +259,12 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
         bold: idx === 1,
       };
     });
-  } else {
-    productsList = [
-      {
-        name: "Wild Forest Multiflora Honey",
-        variant: "1kg",
-        qty: 1,
-        image: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60",
-      },
-    ];
   }
 
   const moreCount = rawProducts.length > 2 ? rawProducts.length - 2 : undefined;
 
   const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
-  const numAmount = og.finalAmount ?? og.totalAmount ?? item.finalAmount ?? item.totalAmount ?? item.total_amount ?? item.amount ?? item.grandTotal ?? 0;
+  const numAmount = item.finalAmount ?? og.finalAmount ?? item.totalAmount ?? og.totalAmount ?? item.total_amount ?? item.amount ?? item.grandTotal ?? 0;
   const amountStr =
     typeof numAmount === "number"
       ? `₹${numAmount.toLocaleString("en-IN")}`
@@ -276,16 +272,19 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
       ? String(numAmount)
       : `₹${numAmount}`;
 
-  const dateObj = new Date(item.createdAt || item.date || item.orderDate || Date.now());
+  const codAmount = Number(item.cod_amount ?? item.codAmount ?? og.cod_amount ?? 0);
+
+  const dateObj = new Date(item.date || item.createdAt || item.orderDate || Date.now());
   const dateStr = !isNaN(dateObj.getTime())
     ? dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-    : "31 May 2024";
+    : "";
   const timeStr = !isNaN(dateObj.getTime())
     ? dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
-    : "10:45 AM";
+    : "";
 
   return {
-    rawId,
+    rawId: mongoId,
+    groupId,
     id: displayId,
     customer: customerName,
     phone: customerPhone,
@@ -296,8 +295,10 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     paymentDot,
     status,
     products: productsList,
+    orderCount,
     moreCount,
     amount: amountStr,
+    codAmount,
     date: dateStr,
     time: timeStr,
     raw: item,
@@ -425,12 +426,14 @@ const allOrders: Order[] = [
   },
 ];
 
-const statusStyles: Record<Order["status"], string> = {
-  Processing: "bg-orange-50 text-orange-500",
-  Packed: "bg-amber-50 text-amber-600",
-  Shipped: "bg-blue-50 text-blue-500",
-  Delivered: "bg-emerald-50 text-emerald-600",
-  Cancelled: "bg-red-50 text-red-500",
+const statusStyles: Record<string, string> = {
+  Processing: "bg-amber-50 text-amber-700 border border-amber-200 font-bold",
+  Pending: "bg-amber-50 text-amber-700 border border-amber-200 font-bold",
+  Confirmed: "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold",
+  Packed: "bg-blue-50 text-blue-700 border border-blue-200 font-bold",
+  Shipped: "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold",
+  Delivered: "bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold",
+  Cancelled: "bg-red-50 text-red-700 border border-red-200 font-bold",
 };
 
 const statusOptions = ["All Statuses", "Processing", "Packed", "Shipped", "Delivered", "Cancelled"];
@@ -831,36 +834,45 @@ export default function OrdersTable() {
                         </span>
                       </td>
                       <td className="px-4 py-4 min-w-[240px]">
-                        <div className="flex flex-col gap-2">
-                          {order.products.map((p, i) => (
-                            <div key={i} className="flex items-center gap-2.5">
-                              {p.image && (
-                                <img
-                                  src={p.image}
-                                  alt={p.name}
-                                  className="w-9 h-9 rounded-lg object-cover bg-amber-50 shrink-0 border border-amber-100 shadow-sm"
-                                />
-                              )}
-                              <div className="min-w-0">
-                                <p className="font-semibold text-gray-800 text-xs leading-snug">
-                                  {p.name}
-                                </p>
-                                <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 font-medium">
-                                  {p.variant && <span>{p.variant}</span>}
-                                  {p.variant && <span>•</span>}
-                                  <span className="text-orange-600 font-semibold bg-orange-50 px-1.5 py-0.2 rounded">
-                                    Qty: {p.qty}
-                                  </span>
+                        {order.products.length > 0 ? (
+                          <div className="flex flex-col gap-2">
+                            {order.products.map((p, i) => (
+                              <div key={i} className="flex items-center gap-2.5">
+                                {p.image && (
+                                  <img
+                                    src={p.image}
+                                    alt={p.name}
+                                    className="w-9 h-9 rounded-lg object-cover bg-amber-50 shrink-0 border border-amber-100 shadow-sm"
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-gray-800 text-xs leading-snug">
+                                    {p.name}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 font-medium">
+                                    {p.variant && <span>{p.variant}</span>}
+                                    {p.variant && <span>•</span>}
+                                    <span className="text-orange-600 font-semibold bg-orange-50 px-1.5 py-0.2 rounded">
+                                      Qty: {p.qty}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
-                          {order.moreCount && (
-                            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-md font-medium w-fit">
-                              +{order.moreCount} more item{order.moreCount > 1 ? "s" : ""}
+                            ))}
+                            {order.moreCount && (
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-md font-medium w-fit">
+                                +{order.moreCount} more item{order.moreCount > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-semibold text-xs rounded-lg border border-amber-200/60 inline-flex items-center gap-1.5">
+                              <Box size={14} className="text-amber-500 shrink-0" />
+                              {order.orderCount || 1} {(order.orderCount || 1) === 1 ? "Order" : "Orders"}
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4 font-semibold text-gray-800 whitespace-nowrap">
                         {order.amount}
