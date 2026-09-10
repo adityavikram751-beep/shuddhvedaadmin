@@ -22,9 +22,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Loader2,
-  X,
   MapPin,
   AlertCircle,
+  ChevronDown,
+  Check,
+  X,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -191,18 +193,36 @@ export default function OrderDetails() {
   const [selectedCarrierId, setSelectedCarrierId] = useState<string>("");
   const [orderGroupIdInput, setOrderGroupIdInput] = useState<string>("");
   const [dimensions, setDimensions] = useState<{
-    length: number;
-    breadth: number;
-    height: number;
-    weight: number;
+    length: string;
+    breadth: string;
+    height: string;
+    weight: string;
   }>({
-    length: 3,
-    breadth: 1,
-    height: 1,
-    weight: 0.25,
+    length: "",
+    breadth: "",
+    height: "",
+    weight: "",
   });
   const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
   const [modalError, setModalError] = useState<string | null>(null);
+
+  const [isCarrierDropdownOpen, setIsCarrierDropdownOpen] = useState<boolean>(false);
+  const carrierDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        carrierDropdownRef.current &&
+        !carrierDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsCarrierDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Calculate pricing breakdown dynamically
   const subtotal = productList.reduce((s, p) => s + p.price * p.qty, 0);
@@ -687,6 +707,12 @@ export default function OrderDetails() {
 
     setAvailableCarriers([]);
     setSelectedCarrierId("");
+    setDimensions({
+      length: "",
+      breadth: "",
+      height: "",
+      weight: "",
+    });
     setModalError(null);
 
     setShowConfirmModal(true);
@@ -1570,76 +1596,69 @@ export default function OrderDetails() {
                 </div>
               </div>
 
-              {/* Available Carriers Dropdown */}
+              {/* Available Carriers Custom Dropdown */}
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                   Available Carriers / Couriers ({availableCarriers.length})
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedCarrierId}
-                    onChange={(e) => setSelectedCarrierId(e.target.value)}
+                <div className="relative" ref={carrierDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (availableCarriers.length > 0) {
+                        setIsCarrierDropdownOpen((prev) => !prev);
+                      }
+                    }}
                     disabled={checkingDelivery || availableCarriers.length === 0}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:border-amber-500 font-semibold text-xs text-slate-800 outline-none transition-all appearance-none cursor-pointer disabled:bg-slate-50 disabled:cursor-not-allowed"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:border-amber-500 font-semibold text-xs text-slate-800 outline-none transition-all cursor-pointer flex items-center justify-between gap-2 shadow-2xs hover:border-amber-400 disabled:bg-slate-50 disabled:cursor-not-allowed text-left"
                   >
-                    {availableCarriers.length === 0 ? (
-                      <option value="">
-                        {checkingDelivery ? "Checking availability..." : "-- Check Pincode to view carriers --"}
-                      </option>
-                    ) : (
-                      availableCarriers.map((c) => (
-                        <option key={c.carrier_id} value={c.carrier_id}>
-                          {c.display_title} (ID: {c.carrier_id})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <ChevronRight size={14} className="absolute right-3 top-3.5 rotate-90 text-slate-400 pointer-events-none" />
-                </div>
+                    <span className="truncate">
+                      {availableCarriers.length === 0
+                        ? checkingDelivery
+                          ? "Checking availability..."
+                          : "-- Check Pincode to view carriers --"
+                        : availableCarriers.find((c) => c.carrier_id === selectedCarrierId)
+                            ?.display_title || "Select Carrier"}
+                    </span>
+                    <ChevronDown
+                      size={15}
+                      className={`text-slate-400 transition-transform duration-200 shrink-0 ${
+                        isCarrierDropdownOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
 
-                {/* Rich Carrier Cards View */}
-                {availableCarriers.length > 0 && (
-                  <div className="mt-2.5 space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {availableCarriers.map((c) => {
-                      const isSelected = selectedCarrierId === c.carrier_id;
-                      return (
-                        <div
-                          key={c.carrier_id}
-                          onClick={() => setSelectedCarrierId(c.carrier_id)}
-                          className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
-                            isSelected
-                              ? "border-amber-500 bg-amber-50/80 text-slate-900 shadow-sm font-bold"
-                              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-medium"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                isSelected ? "border-amber-600 bg-amber-600 text-white" : "border-slate-300"
-                              }`}
-                            >
-                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </div>
-                            <div>
-                              <p className="font-bold text-slate-800 text-xs">
-                                {c.courier_name} {c.mode ? <span className="text-[10px] text-amber-700 bg-amber-100/60 px-1.5 py-0.5 rounded ml-1 font-semibold">{c.mode}</span> : null}
-                              </p>
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                Carrier ID: <span className="font-mono font-semibold">{c.carrier_id}</span>
-                                {c.etd ? ` • EST: ${c.etd}` : ""}
-                              </p>
-                            </div>
-                          </div>
-                          {c.rate !== undefined && c.rate !== null && (
-                            <span className="text-amber-700 bg-amber-100/80 px-2.5 py-1 rounded-lg font-extrabold text-xs shrink-0">
-                              ₹{c.rate}
+                  {/* Downward Popover Menu - closes immediately on select */}
+                  {isCarrierDropdownOpen && availableCarriers.length > 0 && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-amber-300 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto p-1 divide-y divide-slate-100">
+                      {availableCarriers.map((c) => {
+                        const isSelected = selectedCarrierId === c.carrier_id;
+                        return (
+                          <button
+                            key={c.carrier_id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCarrierId(c.carrier_id);
+                              setIsCarrierDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? "bg-amber-100/80 text-amber-950 font-bold"
+                                : "hover:bg-amber-50 text-slate-700"
+                            }`}
+                          >
+                            <span className="truncate pr-2">
+                              {c.display_title} (ID: {c.carrier_id})
                             </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                            {isSelected && (
+                              <Check size={14} className="text-amber-600 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Package Dimensions & Weight */}
@@ -1653,8 +1672,9 @@ export default function OrderDetails() {
                     <input
                       type="number"
                       step="any"
+                      placeholder="Length"
                       value={dimensions.length}
-                      onChange={(e) => setDimensions({ ...dimensions, length: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setDimensions({ ...dimensions, length: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
                     />
                   </div>
@@ -1663,8 +1683,9 @@ export default function OrderDetails() {
                     <input
                       type="number"
                       step="any"
+                      placeholder="Breadth"
                       value={dimensions.breadth}
-                      onChange={(e) => setDimensions({ ...dimensions, breadth: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setDimensions({ ...dimensions, breadth: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
                     />
                   </div>
@@ -1673,8 +1694,9 @@ export default function OrderDetails() {
                     <input
                       type="number"
                       step="any"
+                      placeholder="Height"
                       value={dimensions.height}
-                      onChange={(e) => setDimensions({ ...dimensions, height: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setDimensions({ ...dimensions, height: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
                     />
                   </div>
@@ -1683,8 +1705,9 @@ export default function OrderDetails() {
                     <input
                       type="number"
                       step="any"
+                      placeholder="Weight"
                       value={dimensions.weight}
-                      onChange={(e) => setDimensions({ ...dimensions, weight: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setDimensions({ ...dimensions, weight: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-center font-bold text-slate-800 text-xs outline-none focus:border-amber-500"
                     />
                   </div>

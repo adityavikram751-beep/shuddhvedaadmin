@@ -607,6 +607,17 @@ export default function OrdersTable() {
     });
   }, [orders, search, statusFilter, paymentFilter]);
 
+  const ITEMS_PER_PAGE = 5;
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / ITEMS_PER_PAGE));
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredOrders.length);
+
+  const paginatedOrders = useMemo(() => {
+    return filteredOrders.slice(startIndex, endIndex);
+  }, [filteredOrders, startIndex, endIndex]);
+
   const allSelected =
     filteredOrders.length > 0 && filteredOrders.every((o) => selected.includes(o.id));
 
@@ -635,16 +646,25 @@ export default function OrdersTable() {
   };
 
   const goToPage = (page: number) => {
-    if (page >= 1 && page <= TOTAL_PAGES) setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  // Page numbers to show (1,2,3,4,5), keeping currentPage visible
+  // Dynamic page numbers for pagination
   const pageNumbers = useMemo(() => {
-    const nums = new Set<number>([1, 2, 3, 4, 5, currentPage]);
-    return Array.from(nums)
-      .filter((n) => n >= 1 && n <= 5)
-      .sort((a, b) => a - b);
-  }, [currentPage]);
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   return (
     <div className="w-full mt-6 space-y-4">
@@ -767,7 +787,7 @@ export default function OrdersTable() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => {
+                paginatedOrders.map((order) => {
                   const isChecked = selected.includes(order.id);
                   return (
                     <tr
@@ -901,14 +921,14 @@ export default function OrdersTable() {
         {/* Footer / Pagination */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-5 py-4 border-t border-gray-100">
           <p className="text-sm text-gray-500 text-center sm:text-left">
-            Showing {filteredOrders.length === 0 ? 0 : 1} to {filteredOrders.length} of{" "}
-            {TOTAL_RECORDS.toLocaleString("en-IN")} orders
+            Showing {filteredOrders.length === 0 ? 0 : startIndex + 1} to {endIndex} of{" "}
+            {totalRecords.toLocaleString("en-IN")} orders
           </p>
           <div className="flex items-center justify-center gap-1.5 flex-wrap">
             <button
               onClick={() => goToPage(currentPage - 1)}
               disabled={currentPage === 1}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronLeft size={16} />
             </button>
@@ -916,30 +936,36 @@ export default function OrdersTable() {
               <button
                 key={page}
                 onClick={() => goToPage(page)}
-                className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                   page === currentPage
-                    ? "bg-orange-500 text-white"
+                    ? "bg-orange-500 text-white font-bold shadow-xs"
                     : "text-gray-600 hover:bg-gray-50 border border-gray-200"
                 }`}
               >
                 {page}
               </button>
             ))}
-            <span className="text-gray-400 px-1">...</span>
-            <button
-              onClick={() => goToPage(TOTAL_PAGES)}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
-                currentPage === TOTAL_PAGES
-                  ? "bg-orange-500 text-white"
-                  : "text-gray-600 hover:bg-gray-50 border border-gray-200"
-              }`}
-            >
-              {TOTAL_PAGES}
-            </button>
+            {totalPages > pageNumbers[pageNumbers.length - 1] && (
+              <>
+                {totalPages > pageNumbers[pageNumbers.length - 1] + 1 && (
+                  <span className="text-gray-400 px-1">...</span>
+                )}
+                <button
+                  onClick={() => goToPage(totalPages)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                    currentPage === totalPages
+                      ? "bg-orange-500 text-white font-bold shadow-xs"
+                      : "text-gray-600 hover:bg-gray-50 border border-gray-200"
+                  }`}
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
             <button
               onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === TOTAL_PAGES}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={currentPage >= totalPages}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronRight size={16} />
             </button>

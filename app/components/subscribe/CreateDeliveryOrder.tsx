@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Package,
@@ -30,6 +30,7 @@ import {
   Sparkles,
   Check,
   Pencil,
+  ChevronDown,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -298,6 +299,39 @@ export function getProductImageByName(name?: string): string {
   return "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
 }
 
+export function parseEtdToDateString(etdValue: any): string | null {
+  if (!etdValue) return null;
+  const str = String(etdValue).trim();
+
+  // Match YYYY-MM-DD
+  const ymdMatch = str.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (ymdMatch) return ymdMatch[1];
+
+  // Match DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = str.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, "0");
+    const month = dmyMatch[2].padStart(2, "0");
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // Match relative days
+  const daysNum = parseInt(str, 10);
+  if (!isNaN(daysNum) && daysNum > 0 && daysNum < 60) {
+    const d = new Date();
+    d.setDate(d.getDate() + daysNum);
+    return d.toISOString().split("T")[0];
+  }
+
+  const parsedDate = new Date(str);
+  if (!isNaN(parsedDate.getTime())) {
+    return parsedDate.toISOString().split("T")[0];
+  }
+
+  return null;
+}
+
 const DEFAULT_HONEY_IMAGE =
   "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
 
@@ -316,6 +350,8 @@ export function extractProductImageUrl(prod: any, variant?: any): string {
       rawUrl = prod;
     } else if (typeof prod === "object") {
       const candidates = [
+        prod.imageDocumentId,
+        prod.image_document_id,
         prod.image,
         prod.product_image,
         prod.productImage,
@@ -335,7 +371,17 @@ export function extractProductImageUrl(prod: any, variant?: any): string {
           rawUrl = c;
           break;
         }
-        if (typeof c === "object") {
+        if (Array.isArray(c) && c.length > 0) {
+          const first = c[0];
+          if (typeof first === "string" && first.trim()) { rawUrl = first; break; }
+          if (typeof first === "object" && first) {
+            if (first.image_url) { rawUrl = first.image_url; break; }
+            if (first.url) { rawUrl = first.url; break; }
+            if (first.secure_url) { rawUrl = first.secure_url; break; }
+            if (first.path) { rawUrl = first.path; break; }
+          }
+        }
+        if (typeof c === "object" && !Array.isArray(c)) {
           if (c.image_url) { rawUrl = c.image_url; break; }
           if (c.url) { rawUrl = c.url; break; }
           if (c.secure_url) { rawUrl = c.secure_url; break; }
@@ -363,7 +409,7 @@ export function extractProductImageUrl(prod: any, variant?: any): string {
   }
 
   if (!rawUrl) {
-    return DEFAULT_HONEY_IMAGE;
+    return getProductImageByName(prod?.product_name || prod?.name);
   }
 
   if (
@@ -406,6 +452,176 @@ export default function SubscribePlanOrders() {
   const [postSuccessResponse, setPostSuccessResponse] = useState<any>(null);
   const [postErrorMsg, setPostErrorMsg] = useState<string | null>(null);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
+
+  // Delivery check & package dimension states
+  const [length, setLength] = useState<number | string>("");
+  const [breadth, setBreadth] = useState<number | string>("");
+  const [height, setHeight] = useState<number | string>("");
+  const [weight, setWeight] = useState<number | string>("");
+  const [pincode, setPincode] = useState<string>("");
+  const [checkingDelivery, setCheckingDelivery] = useState<boolean>(false);
+  const [availableCarriers, setAvailableCarriers] = useState<any[]>([]);
+  const [selectedCarrierId, setSelectedCarrierId] = useState<string>("");
+  const [deliveryCheckMsg, setDeliveryCheckMsg] = useState<string | null>(null);
+  const [deliveryCheckError, setDeliveryCheckError] = useState<string | null>(null);
+  const [isCarrierDropdownOpen, setIsCarrierDropdownOpen] = useState(false);
+  const carrierDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        carrierDropdownRef.current &&
+        !carrierDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsCarrierDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleCheckDeliveryAvailability = async (targetPincode?: string) => {
+    const pinToUse = (targetPincode !== undefined ? targetPincode : pincode).trim();
+    if (!pinToUse) {
+      alert("Please enter a valid pincode first.");
+      return;
+    }
+    setCheckingDelivery(true);
+    setDeliveryCheckMsg(null);
+    setDeliveryCheckError(null);
+    setAvailableCarriers([]);
+    setSelectedCarrierId("");
+
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("sudhveda_token") || localStorage.getItem("admin_token")
+          : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(
+        `${API_BASE_URL}/api/order-service/checkdeliveryavailabilitybyadmin`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({ pincode: pinToUse }),
+        }
+      );
+
+      const resJson = await res.json().catch(() => ({}));
+
+      if (
+        res &&
+        res.ok &&
+        resJson &&
+        (Array.isArray(resJson.serviceability_results) ||
+          Array.isArray(resJson.data?.serviceability_results) ||
+          resJson.success !== false)
+      ) {
+        let list: any[] = [];
+        if (Array.isArray(resJson.serviceability_results)) {
+          list = resJson.serviceability_results;
+        } else if (resJson.data && Array.isArray(resJson.data.serviceability_results)) {
+          list = resJson.data.serviceability_results;
+        } else if (Array.isArray(resJson.data)) {
+          list = resJson.data;
+        } else if (Array.isArray(resJson.carriers)) {
+          list = resJson.carriers;
+        } else if (resJson.data && Array.isArray(resJson.data.available_courier_companies)) {
+          list = resJson.data.available_courier_companies;
+        } else if (resJson.data && Array.isArray(resJson.data.carriers)) {
+          list = resJson.data.carriers;
+        } else if (resJson.data && typeof resJson.data === "object") {
+          const firstArray = Object.values(resJson.data).find((val) =>
+            Array.isArray(val)
+          );
+          if (firstArray) list = firstArray as any[];
+        }
+
+        const formatted = list.map((item: any, i: number) => {
+          const cId = String(
+            item.carrier_id ??
+              item.courier_company_id ??
+              item.id ??
+              item.carrierId ??
+              item.code ??
+              item.courier_name ??
+              `carrier_${i + 1}`
+          );
+          const cName = String(
+            item.carrier_name ??
+              item.courier_name ??
+              item.name ??
+              item.title ??
+              item.courier_company_name ??
+              `Carrier ${cId}`
+          );
+          const etd =
+            item.expected_delivery_date ??
+            item.etd ??
+            item.estimated_delivery_days ??
+            item.delivery_performance;
+          const rate =
+            item.rate ?? item.freight_charge ?? item.cost ?? item.rate_total ?? item.charge;
+          const mode = item.mode ?? item.transport_mode;
+
+          let displayTitle = cName;
+          if (etd) displayTitle += ` (EST: ${etd})`;
+          if (mode) displayTitle += ` [${mode}]`;
+          if (rate !== undefined && rate !== null) displayTitle += ` - ₹${rate}`;
+
+          return {
+            carrier_id: cId,
+            courier_name: cName,
+            display_title: displayTitle,
+            rate,
+            etd: etd ? String(etd) : undefined,
+            mode: mode ? String(mode) : undefined,
+            raw: item,
+          };
+        });
+
+        setAvailableCarriers(formatted);
+        if (formatted.length > 0) {
+          const firstCarrier = formatted[0];
+          setSelectedCarrierId(firstCarrier.carrier_id);
+          setDeliveryCheckMsg(
+            `Found ${formatted.length} available courier options for pincode ${pinToUse}`
+          );
+
+          // Auto set delivery date from first carrier's ETD if available
+          const autoDate = parseEtdToDateString(
+            firstCarrier.etd ||
+              firstCarrier.raw?.expected_delivery_date ||
+              firstCarrier.raw?.etd
+          );
+          if (autoDate) {
+            setPlanDeliveryDate(autoDate);
+          }
+        } else {
+          setDeliveryCheckError(`No delivery carriers available for pincode ${pinToUse}`);
+        }
+      } else {
+        setDeliveryCheckError(
+          resJson.message || resJson.error || "Pincode is not serviceable or invalid."
+        );
+      }
+    } catch (err: any) {
+      console.error("Error checking delivery availability:", err);
+      setDeliveryCheckError(err.message || "Failed to check delivery availability.");
+    } finally {
+      setCheckingDelivery(false);
+    }
+  };
 
   const toggleItemDone = (index: number) => {
     setCollapsedItems((prev) => ({
@@ -602,6 +818,16 @@ export default function SubscribePlanOrders() {
     // Always start Create Plan Delivery Order with a clean empty form for adding new products
     setOrderItems([JSON.parse(JSON.stringify(defaultSampleItem))]);
     setCollapsedItems({});
+
+    setPincode("");
+    setLength("");
+    setBreadth("");
+    setHeight("");
+    setWeight("");
+    setAvailableCarriers([]);
+    setSelectedCarrierId("");
+    setDeliveryCheckMsg(null);
+    setDeliveryCheckError(null);
   };
 
   // Helper to calculate totals automatically for an item in the form
@@ -685,6 +911,11 @@ export default function SubscribePlanOrders() {
   const getPostPayload = () => ({
     planPurchaseId: planPurchaseId.trim(),
     plan_delivery_date: planDeliveryDate.trim(),
+    carrier_id: selectedCarrierId || "",
+    length: Number(length) || 3,
+    breadth: Number(breadth) || 1,
+    height: Number(height) || 1,
+    weight: Number(weight) || 1,
     items: orderItems,
   });
 
@@ -728,6 +959,11 @@ export default function SubscribePlanOrders() {
         // Reset order item inputs so old data is completely removed and ready for new entries
         setOrderItems([JSON.parse(JSON.stringify(defaultSampleItem))]);
         setCollapsedItems({});
+        setPincode("");
+        setAvailableCarriers([]);
+        setSelectedCarrierId("");
+        setDeliveryCheckMsg(null);
+        setDeliveryCheckError(null);
         setTimeout(() => {
           setActiveTab("deliveries");
           router.push("/subscribe/delivery-order");
@@ -1418,8 +1654,186 @@ export default function SubscribePlanOrders() {
                             required
                             value={planDeliveryDate}
                             onChange={(e) => setPlanDeliveryDate(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold outline-none focus:border-[#E69A00] focus:bg-white"
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold outline-none focus:border-[#E69A00] focus:bg-white [&::-webkit-calendar-picker-indicator]:hidden"
                           />
+                        </div>
+                      </div>
+
+                      {/* Delivery Pincode Check & Courier Selection */}
+                      <div className="pt-3 border-t border-gray-100 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block font-bold text-gray-700 mb-1">
+                              Delivery Pincode
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Enter Pincode (e.g. 110001)"
+                                value={pincode}
+                                onChange={(e) => setPincode(e.target.value)}
+                                className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold outline-none focus:border-[#E69A00] focus:bg-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleCheckDeliveryAvailability()}
+                                disabled={checkingDelivery}
+                                className="px-3 py-2 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {checkingDelivery ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Truck size={13} />
+                                )}
+                                Check
+                              </button>
+                            </div>
+                          </div>
+
+                          {availableCarriers.length > 0 && (
+                            <div className="relative" ref={carrierDropdownRef}>
+                              <label className="block font-bold text-gray-700 mb-1">
+                                Available Couriers / Carriers ({availableCarriers.length})
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setIsCarrierDropdownOpen((prev) => !prev)}
+                                className="w-full px-3 py-2 bg-white border border-[#E69A00] rounded-lg text-xs font-semibold text-gray-800 outline-none shadow-2xs flex items-center justify-between gap-2 cursor-pointer hover:bg-amber-50/50 transition text-left"
+                              >
+                                <span className="truncate">
+                                  {availableCarriers.find(
+                                    (c) => c.carrier_id === selectedCarrierId
+                                  )?.display_title || "Select Courier"}
+                                </span>
+                                <ChevronDown
+                                  size={14}
+                                  className={`text-[#E69A00] transition-transform duration-200 shrink-0 ${
+                                    isCarrierDropdownOpen ? "rotate-180" : ""
+                                  }`}
+                                />
+                              </button>
+
+                              {/* Downward opening menu */}
+                              {isCarrierDropdownOpen && (
+                                <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-amber-300 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto p-1 divide-y divide-gray-100">
+                                  {availableCarriers.map((carrier) => {
+                                    const isSelected =
+                                      carrier.carrier_id === selectedCarrierId;
+                                    return (
+                                      <button
+                                        key={carrier.carrier_id}
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedCarrierId(carrier.carrier_id);
+                                          setIsCarrierDropdownOpen(false);
+
+                                          // Auto sync selected courier's estimated delivery date to Plan Delivery Date input
+                                          const selDate = parseEtdToDateString(
+                                            carrier.etd ||
+                                              carrier.raw?.expected_delivery_date ||
+                                              carrier.raw?.etd
+                                          );
+                                          if (selDate) {
+                                            setPlanDeliveryDate(selDate);
+                                          }
+                                        }}
+                                        className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${
+                                          isSelected
+                                            ? "bg-amber-100/70 text-amber-950 font-bold"
+                                            : "hover:bg-amber-50 text-gray-700"
+                                        }`}
+                                      >
+                                        <span className="truncate pr-2">
+                                          {carrier.display_title}
+                                        </span>
+                                        {isSelected && (
+                                          <Check
+                                            size={14}
+                                            className="text-[#E69A00] shrink-0"
+                                          />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {deliveryCheckMsg && (
+                          <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                            <CheckCircle2 size={13} /> {deliveryCheckMsg}
+                          </p>
+                        )}
+                        {deliveryCheckError && (
+                          <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1">
+                            <AlertCircle size={13} /> {deliveryCheckError}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Parcel Dimensions & Weight */}
+                      <div className="pt-3 border-t border-gray-100">
+                        <label className="block font-bold text-gray-800 text-xs mb-2 uppercase tracking-wider">
+                          Package Dimensions & Weight
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                              Length (cm)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="Length"
+                              value={length}
+                              onChange={(e) => setLength(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                              Breadth (cm)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="Breadth"
+                              value={breadth}
+                              onChange={(e) => setBreadth(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                              Height (cm)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="Height"
+                              value={height}
+                              onChange={(e) => setHeight(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                              Weight (kg)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              placeholder="Weight"
+                              value={weight}
+                              onChange={(e) => setWeight(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-800 outline-none focus:border-[#E69A00] focus:bg-white"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1655,18 +2069,24 @@ export default function SubscribePlanOrders() {
                                 </div>
 
                                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                                  {/* Product Info */}
-                                  <div>
-                                    <h5 className="font-bold text-gray-900 text-sm">
-                                      {item.product_details.product.product_name || "Select a Product"}
-                                    </h5>
-                                    <p className="text-xs text-gray-500 font-medium">
-                                      Brand: <span className="font-semibold text-gray-700">{item.product_details.product.brand || "ShuddhVeda Honey"}</span>
-                                    </p>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
-                                        Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
-                                      </span>
+                                  {/* Product Info with Thumbnail Image */}
+                                  <div className="flex items-center gap-3">
+                                    {item.product_details.product.image?.image_url ? (
+                                      <img
+                                        src={item.product_details.product.image.image_url}
+                                        alt={item.product_details.product.product_name || "Product"}
+                                        className="w-14 h-14 object-cover rounded-lg border border-amber-200 shadow-2xs shrink-0"
+                                      />
+                                    ) : null}
+                                    <div className="space-y-1">
+                                      <h5 className="font-bold text-gray-900 text-sm">
+                                        {item.product_details.product.product_name || "Select a Product"}
+                                      </h5>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
+                                          Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
 

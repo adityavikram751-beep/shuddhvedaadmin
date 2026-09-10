@@ -55,3 +55,10 @@ select option {
   color: #0F172A !important;
   font-weight: 500;
 }
+
+/* 🗓️ Hide native webkit calendar icon on date inputs */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-inner-spin-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
