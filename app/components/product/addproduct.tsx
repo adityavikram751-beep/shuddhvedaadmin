@@ -376,19 +376,23 @@ function AddProductForm() {
     try {
       const uploadImage = async (file: File, type: "thumbnail" | "gallery", imageId?: string | null) => {
         const formData = new FormData();
-        formData.append("images", file);
-
         const isUpdate = Boolean(isEditMode && imageId);
-        const res = await fetch(
-          isUpdate
-            ? `${API_BASE_URL}/api/products/${productId}/images/${imageId}`
-            : `${API_BASE_URL}/api/products/${productId}/images`,
-          {
-            method: isUpdate ? "PUT" : "POST",
-            credentials: "include",
-            body: formData,
-          }
-        );
+
+        if (isUpdate) {
+          formData.append("image", file);
+        } else {
+          formData.append("images", file);
+        }
+
+        const url = isUpdate
+          ? `${API_BASE_URL}/api/products/${productId}/images/${imageId}`
+          : `${API_BASE_URL}/api/products/${productId}/images`;
+
+        const res = await fetch(url, {
+          method: isUpdate ? "PUT" : "POST",
+          credentials: "include",
+          body: formData,
+        });
 
         if (!res.ok) {
           const err = await res.text();

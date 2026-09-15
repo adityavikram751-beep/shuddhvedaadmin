@@ -86,7 +86,6 @@ const navItems: NavItem[] = [
     ],
   },
   { label: "Notifications", href: "/notifications", icon: Bell, chevron: false, keyword: "notification" },
-  { label: "Reports", href: "/reports", icon: BarChart3, chevron: false, keyword: "report" },
   { label: "Settings", href: "/settings", icon: Settings, chevron: false, keyword: "setting" },
 ];
 

@@ -31,7 +31,6 @@ const pageTitles: Record<string, string> = {
   "/website-content/customer-review": "Customer Review",
   "/website-content/customer-query": "Customer Query",
   "/notifications": "Notifications",
-  "/reports": "Reports",
   "/settings": "Settings",
 };
 
@@ -75,7 +74,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  
+
   const [adminName, setAdminName] = useState("Admin User");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminImage, setAdminImage] = useState("");
@@ -83,7 +82,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
-  
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -141,13 +140,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
       let systemNotifs: NotificationItem[] = [];
       if (notifRes && notifRes.ok) {
         const data = await notifRes.json().catch(() => ({}));
-        const rawList = Array.isArray(data) 
-          ? data 
-          : Array.isArray(data.data) 
-          ? data.data 
-          : Array.isArray(data.data?.notifications)
-          ? data.data.notifications
-          : [];
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data.data)
+            ? data.data
+            : Array.isArray(data.data?.notifications)
+              ? data.data.notifications
+              : [];
 
         systemNotifs = rawList.map((item: any) => ({
           id: item._id || item.id,
@@ -171,10 +170,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
         const rawOrders: any[] = Array.isArray(orderData.data)
           ? orderData.data
           : Array.isArray(orderData.orders)
-          ? orderData.orders
-          : Array.isArray(orderData)
-          ? orderData
-          : [];
+            ? orderData.orders
+            : Array.isArray(orderData)
+              ? orderData
+              : [];
 
         orderNotifs = rawOrders.slice(0, 15).map((item: any, idx: number) => {
           const u = typeof item.userId === "object" && item.userId ? item.userId : typeof item.user === "object" && item.user ? item.user : {};
@@ -376,9 +375,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
                       <div
                         key={item.id}
                         onClick={() => handleItemClick(item.id)}
-                        className={`p-3 rounded-2xl border transition-all cursor-pointer ${
-                          !item.isRead ? "bg-[#FFFBEB] border-amber-200" : "bg-slate-50 border-transparent"
-                        }`}
+                        className={`p-3 rounded-2xl border transition-all cursor-pointer ${!item.isRead ? "bg-[#FFFBEB] border-amber-200" : "bg-slate-50 border-transparent"
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="text-xs font-bold text-slate-900 leading-snug">{item.title}</h4>
