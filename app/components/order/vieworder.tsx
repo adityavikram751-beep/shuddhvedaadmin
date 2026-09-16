@@ -233,11 +233,24 @@ export default function OrderDetails() {
 
   // Calculate pricing breakdown dynamically
   const subtotal = productList.reduce((s, p) => s + p.price * p.qty, 0);
-  const shipping = orderMetaData.deliveryCharge || 60;
-  const discount = subtotal > 1000 ? 50 : 0;
-  const gstRate = 0.05;
-  const gst = Math.round(subtotal * gstRate);
-  const grandTotal = Math.max(0, subtotal + shipping - discount + gst);
+  const activeSubtotal = productList.reduce(
+    (s, p) => (!p.isCancelled && !p.orderStatus?.toLowerCase().includes("cancel") ? s + p.price * p.qty : s),
+    0
+  );
+  const hasCancelledItem = productList.some(
+    (p) => p.isCancelled || p.orderStatus?.toLowerCase().includes("cancel")
+  );
+  const isMultipleProducts = productList.length > 1;
+  const shipping = orderMetaData.deliveryCharge || 0;
+  const discount = orderAmounts.couponDiscount || 0;
+  const grandTotal =
+    orderAmounts.finalAmount > 0
+      ? orderAmounts.finalAmount
+      : hasCancelledItem && isMultipleProducts && activeSubtotal > 0
+      ? activeSubtotal
+      : activeSubtotal > 0
+      ? activeSubtotal
+      : subtotal;
 
   const populateOrderFromData = (rawItem: any) => {
     if (!rawItem) return;
@@ -414,41 +427,6 @@ export default function OrderDetails() {
     const isCod = payMode === "COD" || String(payMode).toLowerCase() === "cod";
     const isPaidOrUpi = payStatusRaw === "paid" || payStatusRaw === "success" || payMode === "UPI" || payMode === "NETBANKING" || String(payMode).toLowerCase() === "upi";
 
-    const rawOrigFAmt = Number(item.original_finalAmount ?? item.originalFinalAmount ?? item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? 0);
-    const rawFAmt = Number(item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? rawOrigFAmt);
-    const rawRemFAmt = item.remaining_amount !== undefined && item.remaining_amount !== null
-      ? Number(item.remaining_amount)
-      : item.remainingAmount !== undefined && item.remainingAmount !== null
-      ? Number(item.remainingAmount)
-      : undefined;
-
-    const rawOrigTAmt = Number(item.original_totalAmount ?? item.originalTotalAmount ?? item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? 0);
-    const rawTAmt = Number(item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? rawOrigTAmt);
-
-    let fAmt = 0;
-    let tAmt = 0;
-
-    const hasCancelledOrder = canCount > 0 || (item.refund_status && item.refund_status !== "none" && item.refund_status !== "0");
-
-    if (isCod) {
-      fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt;
-      tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
-    } else if (isPaidOrUpi) {
-      if (hasCancelledOrder && rawRemFAmt !== undefined) {
-        fAmt = rawRemFAmt;
-        tAmt = rawRemFAmt;
-      } else {
-        fAmt = rawFAmt > 0 ? rawFAmt : rawOrigFAmt;
-        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
-      }
-    } else if (hasCancelledOrder && rawRemFAmt !== undefined) {
-      fAmt = rawRemFAmt;
-      tAmt = rawRemFAmt;
-    } else {
-      fAmt = rawFAmt > 0 ? rawFAmt : rawOrigFAmt;
-      tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
-    }
-
     const cAmt = Number(item.cod_amount ?? item.codAmount ?? firstOrder.cod_amount ?? og.cod_amount ?? 0);
 
     const couponObj = item.coupon || firstOrder.coupon || null;
@@ -495,10 +473,11 @@ export default function OrderDetails() {
                 : [];
     }
 
+    let parsedProds: Product[] = [];
     if (rawProds.length > 0) {
       let weightSum = 0;
       let saveSum = 0;
-      const parsedProds: Product[] = rawProds.map((p: any) => {
+      parsedProds = rawProds.map((p: any) => {
         const pd = p.product_details || {};
         const prod = pd.product || p.product || p;
         const variant = prod.variant || pd.variant || {};
@@ -570,6 +549,135 @@ export default function OrderDetails() {
 
       if (weightSum > 0) weight = weightSum;
       if (saveSum > 0) totalSave = saveSum;
+    }
+
+    const allProdsTotal = parsedProds.reduce((sum, p) => sum + p.price * p.qty, 0);
+    const activeProds = parsedProds.filter(
+      (p) => !p.isCancelled && !p.orderStatus?.toLowerCase().includes("cancel")
+    );
+    const cancelledProds = parsedProds.filter(
+      (p) => p.isCancelled || p.orderStatus?.toLowerCase().includes("cancel")
+    );
+    const activeProdsTotal = activeProds.reduce((sum, p) => sum + p.price * p.qty, 0);
+
+    const isSingleProdOrder = (parsedProds.length === 1 || (parsedProds.length === 0 && totCount <= 1 && ordersList.length <= 1));
+    const isMultipleWithCancellation =
+      (parsedProds.length > 1 || totCount > 1 || ordersList.length > 1) &&
+      (cancelledProds.length > 0 || canCount > 0);
+
+    const rawOrigFAmt = Number(
+      item.original_finalAmount ??
+      item.originalFinalAmount ??
+      item.finalAmount ??
+      firstOrder.finalAmount ??
+      item.final_amount ??
+      firstOrder.final_amount ??
+      og.finalAmount ??
+      item.totalAmount ??
+      firstOrder.totalAmount ??
+      og.totalAmount ??
+      item.total_amount ??
+      firstOrder.total_amount ??
+      og.total_amount ??
+      item.amount ??
+      firstOrder.amount ??
+      item.grandTotal ??
+      firstOrder.grandTotal ??
+      allProdsTotal ??
+      0
+    );
+
+    const rawFAmt = Number(
+      item.finalAmount ??
+      firstOrder.finalAmount ??
+      item.final_amount ??
+      firstOrder.final_amount ??
+      og.finalAmount ??
+      item.totalAmount ??
+      firstOrder.totalAmount ??
+      og.totalAmount ??
+      item.total_amount ??
+      firstOrder.total_amount ??
+      og.total_amount ??
+      item.amount ??
+      firstOrder.amount ??
+      item.grandTotal ??
+      firstOrder.grandTotal ??
+      rawOrigFAmt ??
+      allProdsTotal ??
+      0
+    );
+
+    const rawRemFAmt =
+      item.remaining_amount !== undefined && item.remaining_amount !== null
+        ? Number(item.remaining_amount)
+        : item.remainingAmount !== undefined && item.remainingAmount !== null
+        ? Number(item.remainingAmount)
+        : firstOrder.remaining_amount !== undefined && firstOrder.remaining_amount !== null
+        ? Number(firstOrder.remaining_amount)
+        : firstOrder.remainingAmount !== undefined && firstOrder.remainingAmount !== null
+        ? Number(firstOrder.remainingAmount)
+        : undefined;
+
+    const rawOrigTAmt = Number(
+      item.original_totalAmount ??
+      item.originalTotalAmount ??
+      item.totalAmount ??
+      firstOrder.totalAmount ??
+      item.total_amount ??
+      firstOrder.total_amount ??
+      og.totalAmount ??
+      allProdsTotal ??
+      rawOrigFAmt
+    );
+
+    const rawTAmt = Number(
+      item.totalAmount ??
+      firstOrder.totalAmount ??
+      item.total_amount ??
+      firstOrder.total_amount ??
+      og.totalAmount ??
+      allProdsTotal ??
+      rawFAmt ??
+      rawOrigTAmt
+    );
+
+    let fAmt = 0;
+    let tAmt = 0;
+
+    if (isSingleProdOrder) {
+      // Single product: ALWAYS show single product final amount (e.g. 449). Never 531, never remaining amount!
+      fAmt = rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigFAmt);
+      tAmt = rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigTAmt);
+    } else if (isMultipleWithCancellation) {
+      // Multiple products (e.g. 2 items) where 1 is cancelled and 1 is confirmed:
+      // In paid orders (isPaidOrUpi), show the remaining amount of the confirmed product!
+      const computedRemAmount =
+        rawRemFAmt !== undefined && rawRemFAmt > 0
+          ? rawRemFAmt
+          : activeProdsTotal > 0
+          ? activeProdsTotal
+          : rawFAmt;
+
+      if (isPaidOrUpi) {
+        fAmt = computedRemAmount;
+        tAmt = computedRemAmount;
+      } else if (isCod) {
+        fAmt = computedRemAmount;
+        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
+      } else {
+        fAmt = computedRemAmount;
+        tAmt = computedRemAmount;
+      }
+    } else {
+      // Multiple products, none cancelled
+      if (isCod) {
+        fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt;
+        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
+      } else {
+        fAmt = rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigFAmt);
+        tAmt = rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigTAmt);
+      }
     }
 
     setOrderAmounts({
