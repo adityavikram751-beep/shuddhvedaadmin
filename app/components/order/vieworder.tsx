@@ -43,23 +43,13 @@ interface Product {
   save?: number;
   image: string;
   cartItemId?: string;
+  orderId?: string;
+  orderStatus?: string;
+  isCancelled?: boolean;
 }
 
 const defaultProducts: Product[] = [
-  {
-    name: "Raw Honey 250g",
-    variant: "250g",
-    qty: 1,
-    price: 249,
-    image: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60",
-  },
-  {
-    name: "Wild Honey 1kg",
-    variant: "1kg",
-    qty: 1,
-    price: 675,
-    image: "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=100&auto=format&fit=crop&q=60",
-  },
+
 ];
 
 function loadPdfLibs(): Promise<any> {
@@ -121,6 +111,8 @@ export default function OrderDetails() {
     groupId: string;
     totalAmount: number;
     finalAmount: number;
+    originalTotalAmount?: number;
+    originalFinalAmount?: number;
     codAmount: number;
     couponDiscount: number;
     totalSave: number;
@@ -129,6 +121,8 @@ export default function OrderDetails() {
     groupId: "SG-20260822-3D0C4823",
     totalAmount: 449,
     finalAmount: 561.25,
+    originalTotalAmount: 449,
+    originalFinalAmount: 561,
     codAmount: 112.25,
     couponDiscount: 0,
     totalSave: 51,
@@ -160,6 +154,15 @@ export default function OrderDetails() {
   });
 
   const [productList, setProductList] = useState<Product[]>(defaultProducts);
+  const [orderCounts, setOrderCounts] = useState<{
+    total: number;
+    active: number;
+    cancelled: number;
+  }>({
+    total: 0,
+    active: 0,
+    cancelled: 0,
+  });
 
   const [confirmed, setConfirmed] = useState(false);
   const [packed, setPacked] = useState(false);
@@ -242,8 +245,26 @@ export default function OrderDetails() {
       item = item.data;
     }
 
-    const ordersList = Array.isArray(item.orders) ? item.orders : [];
-    const firstOrder = ordersList[0] || {};
+    const activeOrders = Array.isArray(item.activeOrders) ? item.activeOrders : [];
+    const cancelledOrders = Array.isArray(item.cancelledOrders) ? item.cancelledOrders : [];
+
+    let ordersList: any[] = [];
+    if (Array.isArray(item.orders) && item.orders.length > 0) {
+      ordersList = item.orders;
+    } else if (activeOrders.length > 0 || cancelledOrders.length > 0) {
+      ordersList = [...activeOrders, ...cancelledOrders];
+    }
+
+    const firstOrder = activeOrders[0] || ordersList[0] || {};
+
+    const totCount = Number(item.totalOrderCount ?? ordersList.length);
+    const actCount = Number(item.activeOrderCount ?? activeOrders.length);
+    const canCount = Number(item.cancelledOrderCount ?? cancelledOrders.length);
+    setOrderCounts({
+      total: totCount,
+      active: actCount,
+      cancelled: canCount,
+    });
 
     const displayId =
       item.group_id ||
@@ -257,14 +278,14 @@ export default function OrderDetails() {
     const dateObj = new Date(item.createdAt || firstOrder.createdAt || item.date || item.orderDate || Date.now());
     const dateStr = !isNaN(dateObj.getTime())
       ? `${dateObj.toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })} • ${dateObj.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        })}`
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })} • ${dateObj.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })}`
       : "07 Jul 2026 • 10:15 AM";
     setOrderDateLabel(`Placed on ${dateStr}`);
 
@@ -358,7 +379,7 @@ export default function OrderDetails() {
     const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
 
     const groupId = item.group_id || item.groupId || og.group_id || "";
-    
+
     const findHex24 = (...vals: any[]): string => {
       for (const v of vals) {
         if (!v) continue;
@@ -383,8 +404,40 @@ export default function OrderDetails() {
       ) || groupId;
     setRawGroupId(String(mongoId));
 
-    const tAmt = Number(item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? 0);
-    const fAmt = Number(item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? 0);
+    const payMode = (item.payment_mode || firstOrder.payment_mode || item.payment_method || item.payment?.method || "COD").toUpperCase();
+    const payStatusRaw = String(item.payment_status || firstOrder.payment_status || item.payment?.status || "pending").toLowerCase();
+
+    const isCod = payMode === "COD" || String(payMode).toLowerCase() === "cod";
+    const isPaidOrUpi = payStatusRaw === "paid" || payStatusRaw === "success" || payMode === "UPI" || payMode === "NETBANKING" || String(payMode).toLowerCase() === "upi";
+
+    const rawOrigFAmt = Number(item.original_finalAmount ?? item.originalFinalAmount ?? item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? 0);
+    const rawFAmt = Number(item.finalAmount ?? firstOrder.finalAmount ?? item.final_amount ?? og.finalAmount ?? rawOrigFAmt);
+    const rawRemFAmt = item.remaining_amount !== undefined && item.remaining_amount !== null
+      ? Number(item.remaining_amount)
+      : item.remainingAmount !== undefined && item.remainingAmount !== null
+      ? Number(item.remainingAmount)
+      : undefined;
+
+    const rawOrigTAmt = Number(item.original_totalAmount ?? item.originalTotalAmount ?? item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? 0);
+    const rawTAmt = Number(item.totalAmount ?? firstOrder.totalAmount ?? item.total_amount ?? og.totalAmount ?? rawOrigTAmt);
+
+    let fAmt = 0;
+    let tAmt = 0;
+
+    if (isCod) {
+      fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt;
+      tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
+    } else if (isPaidOrUpi && rawRemFAmt !== undefined) {
+      fAmt = rawRemFAmt;
+      tAmt = rawRemFAmt;
+    } else if (rawRemFAmt !== undefined && rawRemFAmt > 0) {
+      fAmt = rawRemFAmt;
+      tAmt = rawRemFAmt;
+    } else {
+      fAmt = rawFAmt > 0 ? rawFAmt : rawOrigFAmt;
+      tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
+    }
+
     const cAmt = Number(item.cod_amount ?? item.codAmount ?? firstOrder.cod_amount ?? og.cod_amount ?? 0);
 
     const couponObj = item.coupon || firstOrder.coupon || null;
@@ -395,27 +448,40 @@ export default function OrderDetails() {
     // Parse products list
     let rawProds: any[] = [];
     if (ordersList.length > 0) {
-      rawProds = ordersList.flatMap((o: any) =>
-        Array.isArray(o.items)
+      rawProds = ordersList.flatMap((o: any) => {
+        const isCancelledOrder =
+          cancelledOrders.some((co: any) => (co._id && co._id === o._id) || (co.order_id && co.order_id === o.order_id)) ||
+          String(o.order_status || "").toLowerCase().includes("cancel");
+        const orderStatusStr = o.order_status || (isCancelledOrder ? "cancelled" : "processing");
+        const orderIdStr = o.order_id || "";
+
+        const itemsArr = Array.isArray(o.items)
           ? o.items
           : Array.isArray(o.products)
-          ? o.products
-          : Array.isArray(o.order_items)
-          ? o.order_items
-          : []
-      );
+            ? o.products
+            : Array.isArray(o.order_items)
+              ? o.order_items
+              : [];
+
+        return itemsArr.map((it: any) => ({
+          ...it,
+          _parentOrderId: orderIdStr,
+          _parentOrderStatus: orderStatusStr,
+          _parentIsCancelled: isCancelledOrder,
+        }));
+      });
     } else {
       rawProds = Array.isArray(item.products)
         ? item.products
         : Array.isArray(item.items)
-        ? item.items
-        : Array.isArray(item.order_items)
-        ? item.order_items
-        : Array.isArray(item.product_details)
-        ? item.product_details
-        : item.plan
-        ? [item.plan]
-        : [];
+          ? item.items
+          : Array.isArray(item.order_items)
+            ? item.order_items
+            : Array.isArray(item.product_details)
+              ? item.product_details
+              : item.plan
+                ? [item.plan]
+                : [];
     }
 
     if (rawProds.length > 0) {
@@ -460,6 +526,19 @@ export default function OrderDetails() {
           image = image.image_url || image.url || "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
         }
 
+        const itemOrderStatus =
+          p._parentOrderStatus ||
+          p.order_status ||
+          p.status ||
+          firstOrder.order_status ||
+          item.order_status ||
+          "processing";
+
+        const isItemCancelled =
+          Boolean(p._parentIsCancelled) ||
+          String(itemOrderStatus).toLowerCase().includes("cancel") ||
+          Boolean(p.cancelled || p.isCancelled);
+
         return {
           name: pName,
           brand,
@@ -471,6 +550,9 @@ export default function OrderDetails() {
           save,
           image,
           cartItemId: pd.cartItemId || p.cartItemId,
+          orderId: p._parentOrderId || firstOrder.order_id || "",
+          orderStatus: itemOrderStatus,
+          isCancelled: isItemCancelled,
         };
       });
       setProductList(parsedProds);
@@ -483,6 +565,8 @@ export default function OrderDetails() {
       groupId,
       totalAmount: tAmt,
       finalAmount: fAmt,
+      originalTotalAmount: rawOrigTAmt,
+      originalFinalAmount: rawOrigFAmt,
       codAmount: cAmt,
       couponDiscount: couponDisc,
       totalSave: totalSave,
@@ -514,7 +598,7 @@ export default function OrderDetails() {
 
     // Status sync
     const st = String(firstOrder.order_status || item.order_status || item.status || "Pending").toLowerCase();
-    if (st.includes("cancel")) {
+    if (st.includes("cancel") && activeOrders.length === 0) {
       setCancelled(true);
       setConfirmed(false);
       setPacked(false);
@@ -577,10 +661,10 @@ export default function OrderDetails() {
               headers,
             });
             const detailJson = await detailRes.json().catch(() => ({}));
-            
+
             if (detailRes.ok && detailJson.success !== false) {
               const resData = detailJson.data || detailJson.order || detailJson;
-              
+
               if (resData) {
                 let targetItem: any = null;
                 if (Array.isArray(resData)) {
@@ -615,12 +699,12 @@ export default function OrderDetails() {
         const rawList: any[] = Array.isArray(json.data)
           ? json.data
           : Array.isArray(json.orders)
-          ? json.orders
-          : Array.isArray(json)
-          ? json
-          : Array.isArray(json.data?.orders)
-          ? json.data.orders
-          : [];
+            ? json.orders
+            : Array.isArray(json)
+              ? json
+              : Array.isArray(json.data?.orders)
+                ? json.data.orders
+                : [];
 
         if (rawList.length > 0) {
           setAllApiOrders(rawList);
@@ -689,12 +773,12 @@ export default function OrderDetails() {
   const status: OrderStatus = cancelled
     ? "Cancelled"
     : shipped
-    ? "Shipped"
-    : packed
-    ? "Packed"
-    : confirmed
-    ? "Confirmed"
-    : "Pending";
+      ? "Shipped"
+      : packed
+        ? "Packed"
+        : confirmed
+          ? "Confirmed"
+          : "Pending";
 
   const openConfirmOrderModal = () => {
     const matchPincode =
@@ -778,20 +862,20 @@ export default function OrderDetails() {
         const formatted = list.map((item: any, i: number) => {
           const cId = String(
             item.carrier_id ??
-              item.courier_company_id ??
-              item.id ??
-              item.carrierId ??
-              item.code ??
-              item.courier_name ??
-              `carrier_${i + 1}`
+            item.courier_company_id ??
+            item.id ??
+            item.carrierId ??
+            item.code ??
+            item.courier_name ??
+            `carrier_${i + 1}`
           );
           const cName = String(
             item.carrier_name ??
-              item.courier_name ??
-              item.name ??
-              item.title ??
-              item.courier_company_name ??
-              `Carrier ${cId}`
+            item.courier_name ??
+            item.name ??
+            item.title ??
+            item.courier_company_name ??
+            `Carrier ${cId}`
           );
           const etd =
             item.expected_delivery_date ??
@@ -941,12 +1025,13 @@ export default function OrderDetails() {
 
     (doc as any).autoTable({
       startY: 140,
-      head: [["Product", "Variant", "Qty", "Price", "Total"]],
+      head: [["Product", "Variant", "Qty", "Price", "Status", "Total"]],
       body: productList.map((p) => [
-        p.name,
+        p.isCancelled ? `${p.name} (CANCELLED)` : p.name,
         p.variant,
         String(p.qty),
         `Rs ${p.price.toFixed(2)}`,
+        p.isCancelled ? "Cancelled" : p.orderStatus ? p.orderStatus : "Active",
         `Rs ${(p.price * p.qty).toFixed(2)}`,
       ]),
       styles: { fontSize: 10, cellPadding: 6 },
@@ -1037,15 +1122,14 @@ export default function OrderDetails() {
       {/* Title Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order {orderIdLabel}</h1>
-            <span className={`px-3 py-0.5 rounded-full text-xs font-bold border transition-colors ${
-              status === "Confirmed" || status === "Shipped" || status === "Packed"
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : status === "Cancelled"
+            <span className={`px-3 py-0.5 rounded-full text-xs font-bold border transition-colors ${status === "Confirmed" || status === "Shipped" || status === "Packed"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : status === "Cancelled"
                 ? "bg-red-50 text-red-700 border-red-200"
                 : "bg-amber-50 text-amber-700 border-amber-200"
-            }`}>
+              }`}>
               {status}
             </span>
             {loadingOrder && <Loader2 size={16} className="animate-spin text-orange-500" />}
@@ -1178,13 +1262,12 @@ export default function OrderDetails() {
               </div>
               <div>
                 <p className="text-slate-400 font-medium mb-1">Order Status</p>
-                <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${
-                  confirmed || orderMetaData.orderStatus.toLowerCase().includes("confirm") || orderMetaData.orderStatus.toLowerCase().includes("ship") || orderMetaData.orderStatus.toLowerCase().includes("pack")
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : orderMetaData.orderStatus.toLowerCase().includes("cancel")
+                <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${confirmed || orderMetaData.orderStatus.toLowerCase().includes("confirm") || orderMetaData.orderStatus.toLowerCase().includes("ship") || orderMetaData.orderStatus.toLowerCase().includes("pack")
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : orderMetaData.orderStatus.toLowerCase().includes("cancel")
                     ? "bg-red-50 text-red-700 border-red-200"
                     : "bg-amber-50 text-amber-700 border-amber-200"
-                }`}>
+                  }`}>
                   {confirmed ? "Confirmed" : orderMetaData.orderStatus}
                 </span>
               </div>
@@ -1194,6 +1277,18 @@ export default function OrderDetails() {
                   {orderMetaData.inventoryStatus}
                 </span>
               </div>
+              {orderCounts.total > 0 && (
+                <>
+                  <div>
+                    <p className="text-slate-400 font-medium mb-1">Active Sub-orders</p>
+                    <span className="font-bold text-emerald-600 px-2 py-0.5 bg-emerald-50 rounded-md border border-emerald-200/60">{orderCounts.active}</span>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 font-medium mb-1">Cancelled Sub-orders</p>
+                    <span className="font-bold text-rose-600 px-2 py-0.5 bg-rose-50 rounded-md border border-rose-200/60">{orderCounts.cancelled}</span>
+                  </div>
+                </>
+              )}
               <div>
                 <p className="text-slate-400 font-medium mb-1">Order Date</p>
                 <p className="font-bold text-slate-900">{orderDateLabel.replace("Placed on ", "")}</p>
@@ -1233,10 +1328,12 @@ export default function OrderDetails() {
 
           {/* Products Ordered Card */}
           <div className="bg-white rounded-2xl border border-slate-100/80 shadow-sm overflow-hidden">
-            <h2 className="flex items-center gap-2.5 text-xs font-bold text-slate-800 uppercase tracking-wide p-6 pb-4">
-              <Box size={15} className="text-slate-400" />
-              Products Ordered ({productList.length})
-            </h2>
+            <div className="p-6 pb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2.5 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                <Box size={15} className="text-slate-400" />
+                Products Ordered ({productList.length})
+              </h2>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
@@ -1245,58 +1342,107 @@ export default function OrderDetails() {
                     <th className="px-6 py-3 uppercase tracking-wider">Variant</th>
                     <th className="px-6 py-3 uppercase tracking-wider">Quantity</th>
                     <th className="px-6 py-3 uppercase tracking-wider">Price</th>
+                    <th className="px-6 py-3 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 uppercase tracking-wider">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {productList.map((p, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-start gap-3">
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            className="w-12 h-12 rounded-xl object-cover bg-amber-50 shrink-0 border border-amber-100 shadow-sm"
-                          />
-                          <div className="min-w-0 flex items-center">
-                            <p className="font-bold text-slate-800 text-sm leading-snug">{p.name}</p>
+                  {productList.map((p, i) => {
+                    const isCancelled = p.isCancelled || p.orderStatus?.toLowerCase().includes("cancel");
+                    return (
+                      <tr
+                        key={i}
+                        className={`transition-colors ${isCancelled ? "bg-rose-50/30 hover:bg-rose-50/50" : "hover:bg-slate-50/50"
+                          }`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-start gap-3">
+                            <div className="relative shrink-0">
+                              <img
+                                src={p.image}
+                                alt={p.name}
+                                className={`w-12 h-12 rounded-xl object-cover bg-amber-50 border border-amber-100 shadow-sm ${isCancelled ? "opacity-60 grayscale-[30%]" : ""
+                                  }`}
+                              />
+                              {isCancelled && (
+                                <span className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow">
+                                  <X size={10} strokeWidth={3} />
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex flex-col justify-center">
+                              <p
+                                className={`font-bold text-sm leading-snug ${isCancelled ? "text-slate-500 line-through" : "text-slate-800"
+                                  }`}
+                              >
+                                {p.name}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
-                        <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">
-                          {p.variant}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
-                        <span className="px-2 py-1 bg-orange-50 text-orange-600 font-bold text-xs rounded-md">
-                          Qty: {p.qty}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800 text-xs">₹{p.price.toFixed(2)}</span>
-                          {p.mrp && p.mrp > p.price ? (
-                            <span className="text-[11px] text-slate-400 line-through">
-                              ₹{p.mrp.toFixed(2)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-900 text-sm">
-                            ₹{(p.price * p.qty).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                          <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">
+                            {p.variant}
                           </span>
-                          {p.save && p.save > 0 ? (
-                            <span className="text-[10px] font-semibold text-emerald-600">
-                              Saved ₹{(p.save * p.qty).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                          <span
+                            className={`px-2.5 py-1 font-bold text-xs rounded-md ${isCancelled
+                              ? "bg-slate-100 text-slate-500 line-through"
+                              : "bg-orange-50 text-orange-600"
+                              }`}
+                          >
+                            Qty: {p.qty}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span
+                              className={`font-semibold text-xs ${isCancelled ? "text-slate-400 line-through" : "text-slate-800"
+                                }`}
+                            >
+                              ₹{p.price.toFixed(2)}
                             </span>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {p.mrp && p.mrp > p.price ? (
+                              <span className="text-[11px] text-slate-400 line-through">
+                                ₹{p.mrp.toFixed(2)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {isCancelled ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200/80 font-bold text-xs rounded-lg">
+                              <XCircle size={13} className="shrink-0 text-rose-600" />
+                              Cancelled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold text-xs rounded-lg">
+                              <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                              {p.orderStatus
+                                ? p.orderStatus.charAt(0).toUpperCase() + p.orderStatus.slice(1)
+                                : "Active"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span
+                              className={`font-bold text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"
+                                }`}
+                            >
+                              ₹{(p.price * p.qty).toFixed(2)}
+                            </span>
+                            {p.save && p.save > 0 && !isCancelled ? (
+                              <span className="text-[10px] font-semibold text-emerald-600">
+                                Saved ₹{(p.save * p.qty).toFixed(2)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1349,11 +1495,10 @@ export default function OrderDetails() {
               <button
                 onClick={handleConfirm}
                 disabled={cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                  cancelled
-                    ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                    : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98]"
-                }`}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${cancelled
+                  ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+                  : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98]"
+                  }`}
               >
                 <CheckCircle2 size={15} />
                 {confirmed ? "Confirm / Dispatch Order" : "Confirm Order"}
@@ -1362,13 +1507,12 @@ export default function OrderDetails() {
               <button
                 onClick={handlePack}
                 disabled={!confirmed || packed || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                  !confirmed || cancelled
-                    ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                    : packed
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${!confirmed || cancelled
+                  ? "border-slate-100 text-slate-300 cursor-not-allowed"
+                  : packed
                     ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
                     : "border-[#d97706]/30 text-[#d97706] hover:bg-amber-50/50"
-                }`}
+                  }`}
               >
                 <Box size={15} />
                 {packed ? "Order Packed" : "Pack Order"}
@@ -1377,13 +1521,12 @@ export default function OrderDetails() {
               <button
                 onClick={handleShip}
                 disabled={!packed || shipped || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                  !packed || cancelled
-                    ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                    : shipped
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${!packed || cancelled
+                  ? "border-slate-100 text-slate-300 cursor-not-allowed"
+                  : shipped
                     ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
                     : "border-[#d97706]/30 text-[#d97706] hover:bg-amber-50/50"
-                }`}
+                  }`}
               >
                 <Truck size={15} />
                 {shipped ? "Order Shipped" : "Ship Order"}
@@ -1400,11 +1543,10 @@ export default function OrderDetails() {
               <button
                 onClick={handleCancel}
                 disabled={shipped || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                  shipped || cancelled
-                    ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                    : "border-red-200 text-red-500 hover:bg-red-50"
-                }`}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${shipped || cancelled
+                  ? "border-slate-100 text-slate-300 cursor-not-allowed"
+                  : "border-red-200 text-red-500 hover:bg-red-50"
+                  }`}
               >
                 <XCircle size={15} />
                 {cancelled ? "Order Cancelled" : "Cancel Order"}
@@ -1446,11 +1588,10 @@ export default function OrderDetails() {
         <button
           onClick={goPrev}
           disabled={allApiOrders.length === 0 || currentOrderIndex === 0}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold transition-all ${
-            allApiOrders.length === 0 || currentOrderIndex === 0
-              ? "border-slate-100 text-slate-300 cursor-not-allowed"
-              : "border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold transition-all ${allApiOrders.length === 0 || currentOrderIndex === 0
+            ? "border-slate-100 text-slate-300 cursor-not-allowed"
+            : "border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+            }`}
         >
           <ArrowLeft size={14} />
           Previous Order
@@ -1466,11 +1607,10 @@ export default function OrderDetails() {
         <button
           onClick={goNext}
           disabled={allApiOrders.length === 0 || currentOrderIndex >= allApiOrders.length - 1}
-          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
-            allApiOrders.length === 0 || currentOrderIndex >= allApiOrders.length - 1
-              ? "bg-slate-100 text-slate-300 cursor-not-allowed"
-              : "bg-[#d97706] text-white hover:bg-[#b45309]"
-          }`}
+          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${allApiOrders.length === 0 || currentOrderIndex >= allApiOrders.length - 1
+            ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+            : "bg-[#d97706] text-white hover:bg-[#b45309]"
+            }`}
         >
           Next Order
           <ArrowRight size={14} />
@@ -1508,44 +1648,51 @@ export default function OrderDetails() {
               )}
 
               {/* Order Product Preview Card */}
-              {productList.length > 0 && (
-                <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-amber-200/50">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                      <Box size={14} className="text-amber-600" />
-                      Ordered Products ({productList.length})
-                    </span>
-                    <span className="text-xs font-black text-slate-900">
-                      Total: ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : subtotal).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-amber-200/50">
-                    {productList.map((p, i) => (
-                      <div key={i} className="flex items-start gap-3 pt-2.5 first:pt-0">
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          className="w-12 h-12 rounded-xl object-cover bg-white shrink-0 border border-amber-200 shadow-sm"
-                        />
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="font-bold text-slate-900 text-xs leading-snug">{p.name}</p>
-                          <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 pt-0.5">
-                            <span className="bg-white border border-slate-200 px-1.5 py-0.2 rounded text-slate-700">
-                              {p.variant}
-                            </span>
-                            <span>•</span>
-                            <span className="text-orange-600 font-bold bg-orange-50 px-1.5 py-0.2 rounded">
-                              Qty: {p.qty}
-                            </span>
-                            <span>•</span>
-                            <span className="font-bold text-slate-900">₹{(p.price * p.qty).toFixed(2)}</span>
+              {(() => {
+                const activeProducts = productList.filter((p) => !p.isCancelled);
+                if (activeProducts.length === 0) return null;
+                const activeSubtotal = activeProducts.reduce((s, p) => s + p.price * p.qty, 0);
+                const displayTotal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : activeSubtotal;
+
+                return (
+                  <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-amber-200/50">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                        <Box size={14} className="text-amber-600" />
+                        ORDERED PRODUCTS ({activeProducts.length})
+                      </span>
+                      <span className="text-xs font-black text-slate-900">
+                        Total: ₹{displayTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-amber-200/50">
+                      {activeProducts.map((p, i) => (
+                        <div key={i} className="flex items-start gap-3 pt-2.5 first:pt-0">
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-12 h-12 rounded-xl object-cover bg-white shrink-0 border border-amber-200 shadow-sm"
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="font-bold text-slate-900 text-xs leading-snug">{p.name}</p>
+                            <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 pt-0.5">
+                              <span className="bg-white border border-slate-200 px-1.5 py-0.2 rounded text-slate-700">
+                                {p.variant}
+                              </span>
+                              <span>•</span>
+                              <span className="text-orange-600 font-bold bg-orange-50 px-1.5 py-0.2 rounded">
+                                Qty: {p.qty}
+                              </span>
+                              <span>•</span>
+                              <span className="font-bold text-slate-900">₹{(p.price * p.qty).toFixed(2)}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Order Group ID */}
               <div>
@@ -1618,13 +1765,12 @@ export default function OrderDetails() {
                           ? "Checking availability..."
                           : "-- Check Pincode to view carriers --"
                         : availableCarriers.find((c) => c.carrier_id === selectedCarrierId)
-                            ?.display_title || "Select Carrier"}
+                          ?.display_title || "Select Carrier"}
                     </span>
                     <ChevronDown
                       size={15}
-                      className={`text-slate-400 transition-transform duration-200 shrink-0 ${
-                        isCarrierDropdownOpen ? "rotate-180" : ""
-                      }`}
+                      className={`text-slate-400 transition-transform duration-200 shrink-0 ${isCarrierDropdownOpen ? "rotate-180" : ""
+                        }`}
                     />
                   </button>
 
@@ -1641,11 +1787,10 @@ export default function OrderDetails() {
                               setSelectedCarrierId(c.carrier_id);
                               setIsCarrierDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${
-                              isSelected
-                                ? "bg-amber-100/80 text-amber-950 font-bold"
-                                : "hover:bg-amber-50 text-slate-700"
-                            }`}
+                            className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${isSelected
+                              ? "bg-amber-100/80 text-amber-950 font-bold"
+                              : "hover:bg-amber-50 text-slate-700"
+                              }`}
                           >
                             <span className="truncate pr-2">
                               {c.display_title} (ID: {c.carrier_id})

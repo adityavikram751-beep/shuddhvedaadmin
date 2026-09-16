@@ -13,6 +13,8 @@ import {
   Check,
   Loader2,
   Box,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 import { io, Socket } from "socket.io-client";
@@ -37,6 +39,12 @@ interface Order {
     bold?: boolean;
   }[];
   orderCount?: number;
+  activeOrderCount?: number;
+  cancelledOrderCount?: number;
+  refundStatus?: string;
+  totalRefundedAmount?: number;
+  remainingAmount?: number;
+  originalAmount?: string;
   moreCount?: number;
   amount: string;
   codAmount?: number;
@@ -224,6 +232,11 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     : itemsFromOrders;
 
   const orderCount = Number(item.orderCount ?? item.order_count ?? ordersArr.length ?? (rawProducts.length > 0 ? 1 : 0));
+  const activeOrderCount = item.activeOrderCount !== undefined ? Number(item.activeOrderCount) : item.active_order_count !== undefined ? Number(item.active_order_count) : undefined;
+  const cancelledOrderCount = item.cancelledOrderCount !== undefined ? Number(item.cancelledOrderCount) : item.cancelled_order_count !== undefined ? Number(item.cancelled_order_count) : undefined;
+  const refundStatus = item.refund_status || item.refundStatus || "";
+  const totalRefundedAmount = item.total_refunded_amount ?? item.totalRefundedAmount;
+  const remainingAmount = item.remaining_amount ?? item.remainingAmount;
 
   let productsList: Order["products"] = [];
   if (rawProducts.length > 0) {
@@ -264,13 +277,42 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   const moreCount = rawProducts.length > 2 ? rawProducts.length - 2 : undefined;
 
   const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
-  const numAmount = item.finalAmount ?? og.finalAmount ?? item.totalAmount ?? og.totalAmount ?? item.total_amount ?? item.amount ?? item.grandTotal ?? 0;
+  const isCod = payMode === "COD" || String(item.payment_mode || "").toLowerCase() === "cod";
+  const isPaidOrUpi = payStatusRaw === "paid" || payStatusRaw === "success" || payMode === "UPI" || String(item.payment_mode || "").toLowerCase() === "upi";
+
+  const finalNumAmount = Number(item.finalAmount ?? og.finalAmount ?? item.totalAmount ?? og.totalAmount ?? item.total_amount ?? item.amount ?? item.grandTotal ?? 0);
+  const remNumAmount = item.remaining_amount !== undefined && item.remaining_amount !== null
+    ? Number(item.remaining_amount)
+    : item.remainingAmount !== undefined && item.remainingAmount !== null
+    ? Number(item.remainingAmount)
+    : undefined;
+
+  let displayNumAmount = finalNumAmount;
+  if (isCod) {
+    displayNumAmount = finalNumAmount;
+  } else if (isPaidOrUpi && remNumAmount !== undefined) {
+    displayNumAmount = remNumAmount;
+  } else if (remNumAmount !== undefined) {
+    displayNumAmount = remNumAmount;
+  } else {
+    displayNumAmount = finalNumAmount;
+  }
+
+  const originalNumAmount = finalNumAmount;
+
   const amountStr =
-    typeof numAmount === "number"
-      ? `₹${numAmount.toLocaleString("en-IN")}`
-      : String(numAmount).startsWith("₹")
-      ? String(numAmount)
-      : `₹${numAmount}`;
+    typeof displayNumAmount === "number"
+      ? `₹${displayNumAmount.toLocaleString("en-IN")}`
+      : String(displayNumAmount).startsWith("₹")
+      ? String(displayNumAmount)
+      : `₹${displayNumAmount}`;
+
+  const originalAmountStr =
+    typeof originalNumAmount === "number"
+      ? `₹${originalNumAmount.toLocaleString("en-IN")}`
+      : String(originalNumAmount).startsWith("₹")
+      ? String(originalNumAmount)
+      : `₹${originalNumAmount}`;
 
   const codAmount = Number(item.cod_amount ?? item.codAmount ?? og.cod_amount ?? 0);
 
@@ -296,6 +338,12 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     status,
     products: productsList,
     orderCount,
+    activeOrderCount,
+    cancelledOrderCount,
+    refundStatus,
+    totalRefundedAmount: totalRefundedAmount ? Number(totalRefundedAmount) : undefined,
+    remainingAmount: remainingAmount ? Number(remainingAmount) : undefined,
+    originalAmount: originalAmountStr,
     moreCount,
     amount: amountStr,
     codAmount,
@@ -503,11 +551,50 @@ export default function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>(allOrders);
   const [loading, setLoading] = useState<boolean>(true);
   const [totalRecords, setTotalRecords] = useState<number>(TOTAL_RECORDS);
+  const [search, setSearch] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("All Statuses");
+  const [paymentFilter, setPaymentFilter] = useState<string>("All Payments");
   const [selected, setSelected] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All Statuses");
-  const [paymentFilter, setPaymentFilter] = useState("All Payments");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [activeTab, setActiveTab] = useState<"all" | "active" | "cancelled">("all");
+
+  const { allCount, activeCount, cancelledCount } = useMemo(() => {
+    let active = 0;
+    let cancelled = 0;
+    orders.forEach((o) => {
+      const hasActive = o.activeOrderCount !== undefined ? o.activeOrderCount > 0 : o.status !== "Cancelled";
+      const hasCancelled = o.cancelledOrderCount !== undefined ? o.cancelledOrderCount > 0 : o.status === "Cancelled";
+      if (hasActive) active++;
+      if (hasCancelled) cancelled++;
+    });
+    return {
+      allCount: orders.length,
+      activeCount: active,
+      cancelledCount: cancelled,
+    };
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesSearch =
+        search.trim() === "" ||
+        order.id.toLowerCase().includes(search.toLowerCase()) ||
+        order.customer.toLowerCase().includes(search.toLowerCase()) ||
+        order.products.some((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+
+      const matchesStatus = statusFilter === "All Statuses" || order.status === statusFilter;
+      const matchesPayment = paymentFilter === "All Payments" || order.payment === paymentFilter;
+
+      let matchesTab = true;
+      if (activeTab === "active") {
+        matchesTab = order.activeOrderCount !== undefined ? order.activeOrderCount > 0 : order.status !== "Cancelled";
+      } else if (activeTab === "cancelled") {
+        matchesTab = order.cancelledOrderCount !== undefined ? order.cancelledOrderCount > 0 : order.status === "Cancelled";
+      }
+
+      return matchesSearch && matchesStatus && matchesPayment && matchesTab;
+    });
+  }, [orders, search, statusFilter, paymentFilter, activeTab]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -591,21 +678,6 @@ export default function OrdersTable() {
     const targetId = rawId || orderId;
     router.push(`/order/vieworder?id=${encodeURIComponent(targetId)}`);
   };
-
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const matchesSearch =
-        search.trim() === "" ||
-        order.id.toLowerCase().includes(search.toLowerCase()) ||
-        order.customer.toLowerCase().includes(search.toLowerCase()) ||
-        order.products.some((p) => p.name.toLowerCase().includes(search.toLowerCase()));
-
-      const matchesStatus = statusFilter === "All Statuses" || order.status === statusFilter;
-      const matchesPayment = paymentFilter === "All Payments" || order.payment === paymentFilter;
-
-      return matchesSearch && matchesStatus && matchesPayment;
-    });
-  }, [orders, search, statusFilter, paymentFilter]);
 
   const ITEMS_PER_PAGE = 5;
 
@@ -756,8 +828,14 @@ export default function OrdersTable() {
                 <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
                   Status
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
-                  Products
+                <th className="px-4 py-3.5 font-semibold text-amber-600 text-xs uppercase tracking-wide">
+                  Total Order
+                </th>
+                <th className="px-4 py-3.5 font-semibold text-emerald-600 text-xs uppercase tracking-wide">
+                  Active Order
+                </th>
+                <th className="px-4 py-3.5 font-semibold text-red-600 text-xs uppercase tracking-wide">
+                  Cancel Order
                 </th>
                 <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
                   Amount
@@ -773,7 +851,7 @@ export default function OrdersTable() {
             <tbody>
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 size={18} className="animate-spin text-orange-500" />
                       <span>Loading orders from server...</span>
@@ -782,7 +860,7 @@ export default function OrdersTable() {
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={11} className="px-4 py-10 text-center text-gray-400 text-sm">
                     No orders match your filters.
                   </td>
                 </tr>
@@ -853,49 +931,95 @@ export default function OrdersTable() {
                           {order.status}
                         </span>
                       </td>
-                      <td className="px-4 py-4 min-w-[240px]">
-                        {order.products.length > 0 ? (
-                          <div className="flex flex-col gap-2">
-                            {order.products.map((p, i) => (
-                              <div key={i} className="flex items-center gap-2.5">
-                                {p.image && (
-                                  <img
-                                    src={p.image}
-                                    alt={p.name}
-                                    className="w-9 h-9 rounded-lg object-cover bg-amber-50 shrink-0 border border-amber-100 shadow-sm"
-                                  />
-                                )}
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-gray-800 text-xs leading-snug">
-                                    {p.name}
-                                  </p>
-                                  <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 font-medium">
-                                    {p.variant && <span>{p.variant}</span>}
-                                    {p.variant && <span>•</span>}
-                                    <span className="text-orange-600 font-semibold bg-orange-50 px-1.5 py-0.2 rounded">
-                                      Qty: {p.qty}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {order.moreCount && (
-                              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-md font-medium w-fit">
-                                +{order.moreCount} more item{order.moreCount > 1 ? "s" : ""}
-                              </span>
-                            )}
-                          </div>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
+                          <Box size={14} className="text-amber-500 shrink-0" />
+                          {order.orderCount || 1} {(order.orderCount || 1) === 1 ? "Order" : "Orders"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {order.activeOrderCount !== undefined ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                              order.activeOrderCount > 0
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                                : "bg-gray-50 text-gray-400 border border-gray-200"
+                            }`}
+                          >
+                            <CheckCircle2
+                              size={13}
+                              className={
+                                order.activeOrderCount > 0 ? "text-emerald-500" : "text-gray-400"
+                              }
+                            />
+                            Active: {order.activeOrderCount}
+                          </span>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-semibold text-xs rounded-lg border border-amber-200/60 inline-flex items-center gap-1.5">
-                              <Box size={14} className="text-amber-500 shrink-0" />
-                              {order.orderCount || 1} {(order.orderCount || 1) === 1 ? "Order" : "Orders"}
-                            </span>
-                          </div>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                              order.status !== "Cancelled"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                                : "bg-gray-50 text-gray-400 border border-gray-200"
+                            }`}
+                          >
+                            <CheckCircle2
+                              size={13}
+                              className={
+                                order.status !== "Cancelled" ? "text-emerald-500" : "text-gray-400"
+                              }
+                            />
+                            Active: {order.status !== "Cancelled" ? 1 : 0}
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-4 font-semibold text-gray-800 whitespace-nowrap">
-                        {order.amount}
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {order.cancelledOrderCount !== undefined ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                              order.cancelledOrderCount > 0
+                                ? "bg-red-50 text-red-700 border border-red-200/80"
+                                : "bg-gray-50 text-gray-400 border border-gray-200"
+                            }`}
+                          >
+                            <XCircle
+                              size={13}
+                              className={
+                                order.cancelledOrderCount > 0 ? "text-red-500" : "text-gray-400"
+                              }
+                            />
+                            Cancelled: {order.cancelledOrderCount}
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                              order.status === "Cancelled"
+                                ? "bg-red-50 text-red-700 border border-red-200/80"
+                                : "bg-gray-50 text-gray-400 border border-gray-200"
+                            }`}
+                          >
+                            <XCircle
+                              size={13}
+                              className={
+                                order.status === "Cancelled" ? "text-red-500" : "text-gray-400"
+                              }
+                            />
+                            Cancelled: {order.status === "Cancelled" ? 1 : 0}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-gray-900 text-sm">
+                            {order.amount}
+                          </span>
+                          {order.remainingAmount !== undefined &&
+                            order.originalAmount &&
+                            order.originalAmount !== order.amount && (
+                              <span className="text-[11px] text-gray-400 line-through">
+                                {order.originalAmount}
+                              </span>
+                            )}
+                        </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <p className="text-gray-700">{order.date}</p>
