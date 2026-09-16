@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
-type OrderStatus = "Pending" | "Confirmed" | "Packed" | "Shipped" | "Cancelled";
+type OrderStatus = "Pending" | "Confirmed" | "Packed" | "Shipped" | "Delivered" | "Cancelled";
 
 interface Product {
   name: string;
@@ -167,11 +167,15 @@ export default function OrderDetails() {
   const [confirmed, setConfirmed] = useState(false);
   const [packed, setPacked] = useState(false);
   const [shipped, setShipped] = useState(false);
+  const [delivered, setDelivered] = useState(false);
   const [cancelled, setCancelled] = useState(false);
 
   const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
   const [packedAt, setPackedAt] = useState<string | null>(null);
   const [shippedAt, setShippedAt] = useState<string | null>(null);
+  const [deliveredAt, setDeliveredAt] = useState<string | null>(null);
+  const [cancelledAt, setCancelledAt] = useState<string | null>(null);
+  const [paymentTimeState, setPaymentTimeState] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const [pdfReady, setPdfReady] = useState(false);
@@ -582,7 +586,41 @@ export default function OrderDetails() {
 
     // Order Meta
     const subOrderId = firstOrder.order_id || item.order_id || "";
-    const ordStatus = firstOrder.order_status || item.order_status || item.status || "processing";
+
+    // Find all possible status fields from API response
+    const allPossibleStatuses = [
+      item.delivery_status,
+      item.deliveryStatus,
+      firstOrder.delivery_status,
+      firstOrder.deliveryStatus,
+      item.shipment_status,
+      firstOrder.shipment_status,
+      item.shipping_status,
+      firstOrder.shipping_status,
+      item.courier_status,
+      firstOrder.courier_status,
+      item.tracking_status,
+      firstOrder.tracking_status,
+      item.order_status,
+      item.orderStatus,
+      firstOrder.order_status,
+      firstOrder.orderStatus,
+      item.status,
+      firstOrder.status,
+      og.delivery_status,
+      og.order_status,
+      og.status,
+    ]
+      .filter((s) => s !== null && s !== undefined && String(s).trim().length > 0)
+      .map((s) => String(s).trim());
+
+    // Prefer specific/advanced statuses (like Ready_for_pickup, Shipped, etc.) over generic "pending" or "processing"
+    const nonPending = allPossibleStatuses.find((s) => {
+      const low = s.toLowerCase();
+      return low !== "pending" && low !== "processing" && low !== "process";
+    });
+
+    const ordStatus = nonPending || allPossibleStatuses[0] || "processing";
     const invStatus = firstOrder.inventory_status || item.inventory_status || "reserved";
     const payStatus = item.payment_status || firstOrder.payment_status || item.payment?.status || "pending";
     const payMethod = (item.payment_mode || firstOrder.payment_mode || item.payment_method || item.payment?.method || "COD").toUpperCase();
@@ -594,7 +632,7 @@ export default function OrderDetails() {
       subOrderId,
       paymentStatus: payStatus.charAt(0).toUpperCase() + payStatus.slice(1).toLowerCase(),
       paymentMethod: payMethod,
-      orderStatus: ordStatus.charAt(0).toUpperCase() + ordStatus.slice(1).toLowerCase(),
+      orderStatus: ordStatus,
       inventoryStatus: invStatus.charAt(0).toUpperCase() + invStatus.slice(1).toLowerCase(),
       trackingNumber: tracking,
       deliveryMethod: "Standard Delivery",
@@ -603,34 +641,158 @@ export default function OrderDetails() {
       estimatedDelivery: "3-5 Business Days",
     });
 
-    // Status sync
-    const st = String(firstOrder.order_status || item.order_status || item.status || "Pending").toLowerCase();
-    if (st.includes("cancel") && activeOrders.length === 0) {
-      setCancelled(true);
-      setConfirmed(false);
-      setPacked(false);
-      setShipped(false);
-    } else if (st.includes("ship") || st.includes("deliver")) {
-      setShipped(true);
-      setPacked(true);
-      setConfirmed(true);
-      setCancelled(false);
-    } else if (st.includes("pack")) {
-      setPacked(true);
-      setConfirmed(true);
-      setShipped(false);
-      setCancelled(false);
-    } else if (st.includes("confirm")) {
-      setConfirmed(true);
-      setPacked(false);
-      setShipped(false);
-      setCancelled(false);
-    } else {
-      setConfirmed(false);
-      setPacked(false);
-      setShipped(false);
-      setCancelled(false);
+    // Status & Timeline synchronization from API data
+    const localConfirmedList: string[] = typeof window !== "undefined" ? (() => {
+      try {
+        const raw = localStorage.getItem("sudhveda_confirmed_orders");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })() : [];
+
+    const localConfirmedTimes: Record<string, string> = typeof window !== "undefined" ? (() => {
+      try {
+        const raw = localStorage.getItem("sudhveda_confirmed_times");
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })() : {};
+
+    const isConfirmedFromLocal = [
+      displayId,
+      groupId,
+      mongoId,
+      item._id,
+      item.group_id,
+      item.groupId,
+      firstOrder.order_id,
+    ].some((id) => id && localConfirmedList.includes(String(id)));
+
+    let savedConfirmedTime: string | null = null;
+    for (const id of [displayId, groupId, mongoId, item._id, item.group_id, item.groupId, firstOrder.order_id]) {
+      if (id && localConfirmedTimes[String(id)]) {
+        savedConfirmedTime = localConfirmedTimes[String(id)];
+        break;
+      }
     }
+
+    const hasCarrierOrTracking = Boolean(
+      item.carrier_id ||
+      item.carrierId ||
+      firstOrder.carrier_id ||
+      firstOrder.carrierId ||
+      og.carrier_id ||
+      og.carrierId ||
+      item.courier ||
+      firstOrder.courier ||
+      item.delivery_partner ||
+      item.tracking_number ||
+      item.trackingNumber ||
+      firstOrder.tracking_number ||
+      firstOrder.trackingNumber ||
+      item.awb ||
+      firstOrder.awb
+    );
+
+    const allStatuses = allPossibleStatuses.map((s) => s.toLowerCase());
+
+    const hasStatus = (...keywords: string[]) =>
+      allStatuses.some((s) => keywords.some((kw) => s.includes(kw)));
+
+    const isCancelledOrder =
+      (hasStatus("cancel", "reject", "refund") && activeOrders.length === 0) ||
+      item.cancelled === true ||
+      firstOrder.cancelled === true;
+
+    const isDeliveredOrder =
+      hasStatus("deliver", "completed") ||
+      item.delivered === true ||
+      firstOrder.delivered === true;
+
+    const isShippedOrder =
+      isDeliveredOrder ||
+      hasStatus("ship", "dispatch", "transit", "out for delivery", "in_transit", "out_for_delivery") ||
+      Boolean(tracking || item.awb || firstOrder.awb);
+
+    const isPackedOrder =
+      isShippedOrder ||
+      hasStatus("pack", "manifest", "ready_to_ship", "ready to ship", "in packing", "pickup", "ready_for_pickup", "ready_to_pickup", "ready") ||
+      item.isPacked === true;
+
+    const isConfirmedOrder =
+      isPackedOrder ||
+      isShippedOrder ||
+      isDeliveredOrder ||
+      hasStatus("confirm", "accept", "verified", "pickup", "ready") ||
+      item.isConfirmed === true ||
+      item.is_confirmed === true ||
+      item.confirmed === true ||
+      firstOrder.confirmed === true ||
+      firstOrder.isConfirmed === true ||
+      hasCarrierOrTracking ||
+      isConfirmedFromLocal;
+
+    const parseTime = (dateVal: any): string | null => {
+      if (!dateVal) return null;
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return null;
+      return `${d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })} • ${d.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })}`;
+    };
+
+    const apiPlacedTime =
+      parseTime(item.createdAt || firstOrder.createdAt || item.date || item.orderDate) ||
+      dateStr ||
+      null;
+
+    const apiUpdatedTime = parseTime(item.updatedAt || firstOrder.updatedAt) || null;
+
+    const apiPaymentTime =
+      parseTime(item.payment_time || item.paymentDate || firstOrder.payment_time || item.paidAt || firstOrder.paidAt || item.payment?.created_at) ||
+      apiPlacedTime;
+
+    const apiConfirmedTime =
+      parseTime(item.confirmedAt || item.confirmed_at || firstOrder.confirmed_at || item.order_confirmed_at || item.confirmedDate) ||
+      savedConfirmedTime ||
+      (isConfirmedOrder ? apiUpdatedTime || apiPlacedTime : null);
+
+    const apiPackedTime =
+      parseTime(item.packedAt || item.packed_at || firstOrder.packed_at || item.order_packed_at || item.packedDate) ||
+      (isPackedOrder ? apiUpdatedTime || apiConfirmedTime : null);
+
+    const apiShippedTime =
+      parseTime(item.shippedAt || item.shipped_at || firstOrder.shipped_at || item.order_shipped_at || item.shippedDate || item.dispatchedAt || item.dispatched_at) ||
+      (isShippedOrder ? apiUpdatedTime || apiPackedTime : null);
+
+    const apiDeliveredTime =
+      parseTime(item.deliveredAt || item.delivered_at || firstOrder.delivered_at || item.order_delivered_at || item.deliveredDate) ||
+      (isDeliveredOrder ? apiUpdatedTime : null);
+
+    const apiCancelledTime =
+      parseTime(item.cancelledAt || item.cancelled_at || firstOrder.cancelled_at || item.order_cancelled_at) ||
+      (isCancelledOrder ? apiUpdatedTime : null);
+
+    setCancelled(isCancelledOrder);
+    setDelivered(isDeliveredOrder && !isCancelledOrder);
+    setShipped(isShippedOrder && !isCancelledOrder);
+    setPacked(isPackedOrder && !isCancelledOrder);
+    setConfirmed(isConfirmedOrder && !isCancelledOrder);
+
+    setConfirmedAt(apiConfirmedTime);
+    setPackedAt(apiPackedTime);
+    setShippedAt(apiShippedTime);
+    setDeliveredAt(apiDeliveredTime);
+    setCancelledAt(apiCancelledTime);
+    setPaymentTimeState(apiPaymentTime);
   };
 
   // 🌐 GET API Call: Fetch Order Detail by ID
@@ -779,13 +941,15 @@ export default function OrderDetails() {
 
   const status: OrderStatus = cancelled
     ? "Cancelled"
-    : shipped
-      ? "Shipped"
-      : packed
-        ? "Packed"
-        : confirmed
-          ? "Confirmed"
-          : "Pending";
+    : delivered
+      ? "Delivered"
+      : shipped
+        ? "Shipped"
+        : packed
+          ? "Packed"
+          : confirmed
+            ? "Confirmed"
+            : "Pending";
 
   const openConfirmOrderModal = () => {
     const matchPincode =
@@ -975,9 +1139,37 @@ export default function OrderDetails() {
 
       if (res.ok && resJson.success !== false) {
         showToast("Order created & confirmed successfully!");
+        const nowStr = now();
         setConfirmed(true);
-        setConfirmedAt(now());
+        setConfirmedAt(nowStr);
+        setOrderMetaData((prev) => ({
+          ...prev,
+          orderStatus: "Confirmed",
+        }));
         setShowConfirmModal(false);
+
+        try {
+          const idsToSave = [
+            orderGroupIdInput.trim(),
+            rawGroupId,
+            orderAmounts.groupId,
+            queryId,
+            orderIdLabel,
+          ].filter(Boolean);
+          const raw = localStorage.getItem("sudhveda_confirmed_orders");
+          const arr: string[] = raw ? JSON.parse(raw) : [];
+          idsToSave.forEach((id) => {
+            if (id && !arr.includes(String(id))) arr.push(String(id));
+          });
+          localStorage.setItem("sudhveda_confirmed_orders", JSON.stringify(arr));
+
+          const rawTimes = localStorage.getItem("sudhveda_confirmed_times");
+          const timesMap: Record<string, string> = rawTimes ? JSON.parse(rawTimes) : {};
+          idsToSave.forEach((id) => {
+            if (id && !timesMap[String(id)]) timesMap[String(id)] = nowStr;
+          });
+          localStorage.setItem("sudhveda_confirmed_times", JSON.stringify(timesMap));
+        } catch {}
       } else {
         setModalError(resJson.message || resJson.error || "Failed to create order by admin.");
       }
@@ -1011,57 +1203,244 @@ export default function OrderDetails() {
     const { jsPDF } = (window as any).jspdf;
     const doc = new jsPDF({ unit: "pt", format: "a4" });
 
+    // 1. Identify active products (only print active items shown on screen)
+    const activeProducts = productList.filter(
+      (p) => !p.isCancelled && !p.orderStatus?.toLowerCase().includes("cancel")
+    );
+    const invoiceProducts = activeProducts.length > 0 ? activeProducts : productList;
+    const activeSubtotal = invoiceProducts.reduce((sum, p) => sum + p.price * p.qty, 0);
+
+    const dispTotal = orderAmounts.totalAmount > 0 ? orderAmounts.totalAmount : activeSubtotal;
+    const dispCod = orderAmounts.codAmount;
+    const dispDiscount = orderAmounts.couponDiscount > 0 ? orderAmounts.couponDiscount : discount;
+    const dispSave = orderAmounts.totalSave;
+    const dispFinal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (grandTotal > 0 ? grandTotal : dispTotal);
+    const currentStatus = confirmed ? "Confirmed" : (orderMetaData.orderStatus || status || "Pending");
+
+    // Brand accent banner
+    doc.setFillColor(217, 119, 6);
+    doc.rect(0, 0, 595.28, 8, "F");
+
+    // Company Name / Branding
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(217, 119, 6);
+    doc.text("SHUDDHVEDA", 40, 48);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Pure & Natural Products", 40, 62);
+
+    // Invoice Title
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.setFont(undefined, "bold");
-    doc.text("Invoice", 40, 50);
+    doc.setTextColor(15, 23, 42);
+    doc.text("TAX INVOICE", 555, 48, { align: "right" });
 
-    doc.setFontSize(10);
-    doc.setFont(undefined, "normal");
-    doc.text(`Order ${orderIdLabel}`, 40, 70);
-    doc.text(`Status: ${status}`, 40, 84);
-    doc.text(orderDateLabel, 40, 98);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Invoice #${(orderIdLabel || "ORD").replace(/^#/, "")}`, 555, 62, { align: "right" });
 
-    doc.text("Bill To:", 400, 70);
-    const activeAddr = customerInfo.billingAddress || customerInfo.shippingAddress || "";
-    const addrLines = activeAddr.split(",");
-    let addrY = 98;
-    addrLines.slice(0, 3).forEach((line) => {
-      doc.text(line.trim(), 400, addrY);
-      addrY += 14;
-    });
+    // Divider
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(1);
+    doc.line(40, 74, 555, 74);
+
+    // Left Column: Order Details
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(217, 119, 6);
+    doc.text("ORDER DETAILS", 40, 92);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+
+    let leftY = 107;
+    doc.text(`Order ID: ${orderIdLabel}`, 40, leftY);
+    leftY += 14;
+    if (orderAmounts.groupId && orderAmounts.groupId !== orderIdLabel) {
+      doc.text(`Group ID: ${orderAmounts.groupId}`, 40, leftY);
+      leftY += 14;
+    }
+    const cleanDate = orderDateLabel.replace("Placed on ", "").trim();
+    if (cleanDate) {
+      doc.text(`Order Date: ${cleanDate}`, 40, leftY);
+      leftY += 14;
+    }
+    doc.text(`Order Status: ${currentStatus}`, 40, leftY);
+    leftY += 14;
+    doc.text(`Payment Mode: ${orderMetaData.paymentMethod || "COD"}`, 40, leftY);
+    leftY += 14;
+    doc.text(`Payment Status: ${orderMetaData.paymentStatus || "Pending"}`, 40, leftY);
+    leftY += 14;
+
+    // Right Column: Customer & Shipping Details
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(217, 119, 6);
+    doc.text("CUSTOMER & SHIPPING DETAILS", 330, 92);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+
+    let rightY = 107;
+    const custName = customerInfo.shippingName || customerInfo.name || "Customer";
+    doc.setFont("helvetica", "bold");
+    doc.text(custName, 330, rightY);
+    doc.setFont("helvetica", "normal");
+    rightY += 14;
+
+    const custPhone = customerInfo.shippingPhone || customerInfo.phone;
+    if (custPhone) {
+      doc.text(`Phone: ${custPhone}`, 330, rightY);
+      rightY += 14;
+    }
+    if (customerInfo.email) {
+      doc.text(`Email: ${customerInfo.email}`, 330, rightY);
+      rightY += 14;
+    }
+
+    const shipAddr = customerInfo.shippingAddress && customerInfo.shippingAddress !== "-"
+      ? customerInfo.shippingAddress
+      : customerInfo.billingAddress && customerInfo.billingAddress !== "-"
+      ? customerInfo.billingAddress
+      : "";
+
+    if (shipAddr) {
+      const splitAddr: string[] = doc.splitTextToSize(`Address: ${shipAddr}`, 225);
+      splitAddr.slice(0, 3).forEach((line: string) => {
+        doc.text(line, 330, rightY);
+        rightY += 13;
+      });
+    }
+
+    const tableStartY = Math.max(leftY, rightY) + 16;
 
     (doc as any).autoTable({
-      startY: 140,
-      head: [["Product", "Variant", "Qty", "Price", "Status", "Total"]],
-      body: productList.map((p) => [
-        p.isCancelled ? `${p.name} (CANCELLED)` : p.name,
-        p.variant,
+      startY: tableStartY,
+      head: [["#", "Product Name", "Variant", "Qty", "Price", "Total"]],
+      body: invoiceProducts.map((p, idx) => [
+        String(idx + 1),
+        p.name,
+        p.variant || "-",
         String(p.qty),
-        `Rs ${p.price.toFixed(2)}`,
-        p.isCancelled ? "Cancelled" : p.orderStatus ? p.orderStatus : "Active",
-        `Rs ${(p.price * p.qty).toFixed(2)}`,
+        `Rs. ${p.price.toFixed(2)}`,
+        `Rs. ${(p.price * p.qty).toFixed(2)}`,
       ]),
-      styles: { fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [217, 119, 6] },
+      styles: {
+        fontSize: 9,
+        cellPadding: 7,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240],
+        lineWidth: 0.5,
+      },
+      headStyles: {
+        fillColor: [217, 119, 6],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      columnStyles: {
+        0: { cellWidth: 25, halign: "center" },
+        1: { cellWidth: "auto" },
+        2: { cellWidth: 65, halign: "center" },
+        3: { cellWidth: 40, halign: "center" },
+        4: { cellWidth: 75, halign: "right" },
+        5: { cellWidth: 80, halign: "right" },
+      },
       margin: { left: 40, right: 40 },
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 20;
-    const rows: [string, string][] = [
-      ["Subtotal", `Rs ${subtotal.toFixed(2)}`],
-      ["Shipping charge", `Rs ${shipping.toFixed(2)}`],
-      ["Discount", `- Rs ${discount.toFixed(2)}`],
-      ["GST (5%)", `Rs ${gst.toFixed(2)}`],
-      ["Grand total", `Rs ${grandTotal.toFixed(2)}`],
+    let finalY = (doc as any).lastAutoTable.finalY + 16;
+    if (finalY > 720) {
+      doc.addPage();
+      finalY = 50;
+    }
+
+    const summaryRows: [string, string, boolean][] = [
+      ["Total Amount", `Rs. ${dispTotal.toFixed(2)}`, false],
     ];
-    let y = finalY;
-    rows.forEach(([label, value], i) => {
-      doc.setFont(undefined, i === rows.length - 1 ? "bold" : "normal");
-      doc.setFontSize(i === rows.length - 1 ? 12 : 10);
-      doc.text(label, 380, y);
-      doc.text(value, 500, y);
-      y += 18;
+
+    if (dispCod > 0 || String(orderMetaData.paymentMethod).toUpperCase() === "COD") {
+      summaryRows.push(["COD Amount", `Rs. ${dispCod.toFixed(2)}`, false]);
+    }
+    if (dispDiscount > 0) {
+      summaryRows.push(["Discount", `- Rs. ${dispDiscount.toFixed(2)}`, false]);
+    }
+    if (dispSave > 0) {
+      summaryRows.push(["Total Savings", `Rs. ${dispSave.toFixed(2)}`, false]);
+    }
+    summaryRows.push([
+      "Final Amount",
+      `Rs. ${dispFinal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+      true,
+    ]);
+
+    // Draw Price Summary Card on the right
+    const summaryWidth = 220;
+    const summaryX = 555 - summaryWidth;
+    const rowHeight = 20;
+    const boxHeight = summaryRows.length * rowHeight + 12;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(summaryX, finalY, summaryWidth, boxHeight, 4, 4, "FD");
+
+    let currY = finalY + 16;
+    summaryRows.forEach(([label, val, isBold]) => {
+      if (isBold) {
+        doc.setDrawColor(226, 232, 240);
+        doc.line(summaryX + 8, currY - 6, summaryX + summaryWidth - 8, currY - 6);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42);
+        doc.text(label, summaryX + 12, currY + 2);
+        doc.text(val, summaryX + summaryWidth - 12, currY + 2, { align: "right" });
+      } else {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text(label, summaryX + 12, currY);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 41, 59);
+        doc.text(val, summaryX + summaryWidth - 12, currY, { align: "right" });
+      }
+      currY += rowHeight;
     });
+
+    if (customerInfo.customerNote) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8.5);
+      doc.setTextColor(148, 163, 184);
+      const noteLines: string[] = doc.splitTextToSize(`Note: "${customerInfo.customerNote}"`, 240);
+      let noteY = finalY + 14;
+      noteLines.forEach((nLine: string) => {
+        doc.text(nLine, 40, noteY);
+        noteY += 12;
+      });
+    }
+
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        "Thank you for shopping with Shuddhveda! | Computer generated invoice",
+        297.64,
+        820,
+        { align: "center" }
+      );
+    }
 
     return doc;
   };
@@ -1071,9 +1450,14 @@ export default function OrderDetails() {
       window.print();
       return;
     }
-    const doc = buildInvoiceDoc();
-    doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
+    try {
+      const doc = buildInvoiceDoc();
+      doc.autoPrint();
+      window.open(doc.output("bloburl"), "_blank");
+    } catch (err) {
+      console.error("Print invoice error:", err);
+      window.print();
+    }
   };
 
   const handleDownload = async () => {
@@ -1081,9 +1465,15 @@ export default function OrderDetails() {
       showToast("Preparing PDF engine, try again in a moment.");
       return;
     }
-    const doc = buildInvoiceDoc();
-    doc.save(`Invoice-${orderIdLabel.replace("#", "")}.pdf`);
-    showToast("Invoice downloaded.");
+    try {
+      const doc = buildInvoiceDoc();
+      const safeId = (orderIdLabel || orderAmounts.groupId || "order").replace(/[^a-zA-Z0-9-_]/g, "_");
+      doc.save(`Invoice-${safeId}.pdf`);
+      showToast("Invoice generated & downloaded.");
+    } catch (err: any) {
+      console.error("Generate invoice error:", err);
+      showToast("Failed to generate invoice.");
+    }
   };
 
   const goPrev = () => {
@@ -1102,14 +1492,64 @@ export default function OrderDetails() {
     }
   };
 
+  const isCod = String(orderMetaData.paymentMethod).toUpperCase() === "COD";
+  const isPaid =
+    orderMetaData.paymentStatus.toLowerCase() === "paid" ||
+    orderMetaData.paymentStatus.toLowerCase() === "success" ||
+    (!isCod && orderMetaData.paymentStatus.toLowerCase() !== "pending") ||
+    delivered;
+
   const timeline = [
-    { label: "Order Placed", time: orderDateLabel.replace("Placed on ", ""), done: true },
-    { label: "Payment Received", time: orderDateLabel.replace("Placed on ", ""), done: true },
-    { label: "Order Confirmed", time: confirmedAt, done: confirmed },
-    { label: "Packed", time: packedAt, done: packed },
-    { label: "Shipped", time: shippedAt, done: shipped },
-    { label: "Delivered", time: null, done: false },
+    {
+      label: "Order Placed",
+      time: orderDateLabel.replace("Placed on ", "").trim() || "-",
+      done: true,
+      isCancel: false,
+    },
+    {
+      label: "Payment Received",
+      time: isPaid
+        ? paymentTimeState || orderDateLabel.replace("Placed on ", "").trim() || "-"
+        : isCod
+        ? "Upon Delivery (COD)"
+        : "-",
+      done: isPaid,
+      isCancel: false,
+    },
+    {
+      label: "Order Confirmed",
+      time: confirmed ? confirmedAt || "-" : "-",
+      done: confirmed,
+      isCancel: false,
+    },
+    {
+      label: "Packed",
+      time: packed ? packedAt || "-" : "-",
+      done: packed,
+      isCancel: false,
+    },
+    {
+      label: "Shipped",
+      time: shipped ? shippedAt || "-" : "-",
+      done: shipped,
+      isCancel: false,
+    },
+    {
+      label: "Delivered",
+      time: delivered ? deliveredAt || "-" : "-",
+      done: delivered,
+      isCancel: false,
+    },
   ];
+
+  if (cancelled) {
+    timeline.push({
+      label: "Order Cancelled",
+      time: cancelledAt || "-",
+      done: true,
+      isCancel: true,
+    });
+  }
 
   return (
     <div className="w-full max-w-[1400px] mx-auto bg-[#f8f9fa] min-h-screen p-4 sm:p-8 font-sans text-slate-800">
@@ -1245,14 +1685,52 @@ export default function OrderDetails() {
               </div>
               <div>
                 <p className="text-slate-400 font-medium mb-1">Order Status</p>
-                <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] border ${confirmed || orderMetaData.orderStatus.toLowerCase().includes("confirm") || orderMetaData.orderStatus.toLowerCase().includes("ship") || orderMetaData.orderStatus.toLowerCase().includes("pack")
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : orderMetaData.orderStatus.toLowerCase().includes("cancel")
-                    ? "bg-red-50 text-red-700 border-red-200"
-                    : "bg-amber-50 text-amber-700 border-amber-200"
-                  }`}>
-                  {confirmed ? "Confirmed" : orderMetaData.orderStatus}
-                </span>
+                {(() => {
+                  const currentStatus =
+                    orderMetaData.orderStatus &&
+                    orderMetaData.orderStatus.toLowerCase() !== "pending" &&
+                    orderMetaData.orderStatus.toLowerCase() !== "processing"
+                      ? orderMetaData.orderStatus
+                      : status !== "Pending"
+                      ? status
+                      : orderMetaData.orderStatus || "Pending";
+
+                  const sLow = currentStatus.toLowerCase();
+                  const isSuccess =
+                    sLow.includes("ready") ||
+                    sLow.includes("pickup") ||
+                    sLow.includes("confirm") ||
+                    sLow.includes("pack") ||
+                    sLow.includes("ship") ||
+                    sLow.includes("transit") ||
+                    sLow.includes("deliver");
+                  const isDanger =
+                    sLow.includes("cancel") ||
+                    sLow.includes("refund") ||
+                    sLow.includes("reject") ||
+                    sLow.includes("fail");
+
+                  return (
+                    <span
+                      className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] border transition-all ${
+                        isSuccess
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200/90"
+                          : isDanger
+                          ? "bg-red-50 text-red-700 border-red-200/90"
+                          : "bg-amber-50 text-amber-700 border-amber-200/90"
+                      }`}
+                    >
+                      {isSuccess ? (
+                        <CheckCircle2 size={12} className="shrink-0 text-emerald-600" />
+                      ) : isDanger ? (
+                        <XCircle size={12} className="shrink-0 text-red-600" />
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      )}
+                      {currentStatus}
+                    </span>
+                  );
+                })()}
               </div>
               <div>
                 <p className="text-slate-400 font-medium mb-1">Inventory Status</p>
@@ -1453,7 +1931,9 @@ export default function OrderDetails() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Discount</span>
-                  <span className="font-semibold text-emerald-600">-₹{discount.toFixed(2)}</span>
+                  <span className="font-semibold text-emerald-600">
+                    -₹{(orderAmounts.couponDiscount > 0 ? orderAmounts.couponDiscount : discount).toFixed(2)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1475,45 +1955,34 @@ export default function OrderDetails() {
               Quick Actions
             </h2>
             <div className="space-y-3">
-              <button
-                onClick={handleConfirm}
-                disabled={confirmed || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${confirmed || cancelled
-                  ? "border border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed shadow-none"
-                  : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98] shadow-sm"
-                  }`}
-              >
-                <CheckCircle2 size={15} />
-                {confirmed ? "Order Confirmed" : "Confirm Order"}
-              </button>
+              {(() => {
+                const isPendingOrProcessing =
+                  orderMetaData.orderStatus.toLowerCase().includes("pend") ||
+                  orderMetaData.orderStatus.toLowerCase().includes("process");
+                const canConfirm =
+                  !confirmed &&
+                  !packed &&
+                  !shipped &&
+                  !cancelled &&
+                  isPendingOrProcessing;
 
-              <button
-                onClick={handlePack}
-                disabled={!confirmed || packed || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${!confirmed || cancelled
-                  ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                  : packed
-                    ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
-                    : "border-[#d97706]/30 text-[#d97706] hover:bg-amber-50/50"
-                  }`}
-              >
-                <Box size={15} />
-                {packed ? "Order Packed" : "Pack Order"}
-              </button>
+                return (
+                  <button
+                    onClick={canConfirm ? handleConfirm : undefined}
+                    disabled={!canConfirm}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      canConfirm
+                        ? "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98] shadow-sm"
+                        : "border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed shadow-none opacity-60 pointer-events-none select-none"
+                    }`}
+                  >
+                    <CheckCircle2 size={15} />
+                    Confirm Order
+                  </button>
+                );
+              })()}
 
-              <button
-                onClick={handleShip}
-                disabled={!packed || shipped || cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${!packed || cancelled
-                  ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                  : shipped
-                    ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed"
-                    : "border-[#d97706]/30 text-[#d97706] hover:bg-amber-50/50"
-                  }`}
-              >
-                <Truck size={15} />
-                {shipped ? "Order Shipped" : "Ship Order"}
-              </button>
+
 
               <button
                 onClick={handleDownload}
@@ -1543,24 +2012,56 @@ export default function OrderDetails() {
               <Clock size={15} className="text-slate-400" />
               Order Timeline
             </h2>
-            <div className="space-y-4">
-              {timeline.map((step, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  {step.done ? (
-                    <CheckCircle2 size={16} className="text-emerald-500 fill-emerald-50 shrink-0 mt-0.5" />
-                  ) : (
-                    <Circle size={16} className="text-slate-200 shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 flex items-center justify-between text-xs">
-                    <span className={`font-semibold ${step.done ? "text-slate-800" : "text-slate-400"}`}>
-                      {step.label}
-                    </span>
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {step.time ?? "-"}
-                    </span>
+            <div className="relative">
+              {timeline.map((step, i) => {
+                const isLast = i === timeline.length - 1;
+                return (
+                  <div key={i} className="relative flex items-start gap-3 pb-5 last:pb-0">
+                    {!isLast && (
+                      <div
+                        className={`absolute left-[7px] top-[18px] bottom-0 w-0.5 transition-colors ${
+                          step.done && timeline[i + 1]?.done
+                            ? "bg-emerald-500"
+                            : "bg-slate-100"
+                        }`}
+                      />
+                    )}
+                    <div className="relative z-10 shrink-0 mt-0.5">
+                      {step.isCancel ? (
+                        <XCircle size={16} className="text-rose-500 fill-rose-50" />
+                      ) : step.done ? (
+                        <CheckCircle2 size={16} className="text-emerald-500 fill-emerald-50" />
+                      ) : (
+                        <Circle size={16} className="text-slate-200 fill-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 flex items-center justify-between text-xs min-w-0 pt-0.5">
+                      <span
+                        className={`font-semibold truncate ${
+                          step.isCancel
+                            ? "text-rose-600 font-bold"
+                            : step.done
+                            ? "text-slate-800"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                      <span
+                        className={`text-[11px] font-medium shrink-0 ml-2 ${
+                          step.isCancel
+                            ? "text-rose-500"
+                            : step.done
+                            ? "text-slate-500"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        {step.time ?? "-"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

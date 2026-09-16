@@ -197,10 +197,10 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     paymentDot = "bg-amber-500";
   }
 
-  const st = String(item.status || item.order_status || item.delivery_status || "Processing").toLowerCase();
+  const st = String(item.delivery_status || item.deliveryStatus || item.shipment_status || item.status || item.order_status || "Processing").toLowerCase();
   let status: Order["status"] = "Processing";
-  if (st.includes("pack")) status = "Packed";
-  else if (st.includes("ship") || st.includes("dispatch")) status = "Shipped";
+  if (st.includes("pack") || st.includes("pickup") || st.includes("ready")) status = "Packed";
+  else if (st.includes("ship") || st.includes("dispatch") || st.includes("transit")) status = "Shipped";
   else if (st.includes("deliver")) status = "Delivered";
   else if (st.includes("cancel") || st.includes("refund")) status = "Cancelled";
   else if (st.includes("process") || st.includes("active") || st.includes("pending")) status = "Processing";
