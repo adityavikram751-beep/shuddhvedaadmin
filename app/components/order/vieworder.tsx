@@ -81,8 +81,8 @@ export default function OrderDetails() {
   const [allApiOrders, setAllApiOrders] = useState<any[]>([]);
   const [currentOrderIndex, setCurrentOrderIndex] = useState<number>(0);
 
-  const [orderIdLabel, setOrderIdLabel] = useState<string>("#ORD-1052");
-  const [orderDateLabel, setOrderDateLabel] = useState<string>("07 Jul 2026 • 10:15 AM");
+  const [orderIdLabel, setOrderIdLabel] = useState<string>("");
+  const [orderDateLabel, setOrderDateLabel] = useState<string>("");
   const [customerInfo, setCustomerInfo] = useState<{
     name: string;
     phone: string;
@@ -95,16 +95,16 @@ export default function OrderDetails() {
     billingAddress: string;
     customerNote?: string;
   }>({
-    name: "aditya",
-    phone: "8175022207",
+    name: "",
+    phone: "",
     email: "",
-    shippingName: "Anoop",
-    shippingPhone: "08377738980",
-    shippingAddress: "Hno-49, Garwa,lambhua, Sultanpur, Hno-49, Sultanpur, Uttar Pradesh, 227304, India",
-    billingName: "Anoop",
-    billingPhone: "08377738980",
-    billingAddress: "Hno-49, Garwa,lambhua, Sultanpur, Garwa,Lambhua,Sultanpur, Sultanpur, Uttar Pradesh, 227304, India",
-    customerNote: "Please deliver during daytime.",
+    shippingName: "",
+    shippingPhone: "",
+    shippingAddress: "",
+    billingName: "",
+    billingPhone: "",
+    billingAddress: "",
+    customerNote: "",
   });
 
   const [orderAmounts, setOrderAmounts] = useState<{
@@ -118,15 +118,15 @@ export default function OrderDetails() {
     totalSave: number;
     totalWeight: number;
   }>({
-    groupId: "SG-20260822-3D0C4823",
-    totalAmount: 449,
-    finalAmount: 561.25,
-    originalTotalAmount: 449,
-    originalFinalAmount: 561,
-    codAmount: 112.25,
+    groupId: "",
+    totalAmount: 0,
+    finalAmount: 0,
+    originalTotalAmount: 0,
+    originalFinalAmount: 0,
+    codAmount: 0,
     couponDiscount: 0,
-    totalSave: 51,
-    totalWeight: 250,
+    totalSave: 0,
+    totalWeight: 0,
   });
 
   const [orderMetaData, setOrderMetaData] = useState<{
@@ -141,19 +141,19 @@ export default function OrderDetails() {
     deliveryCharge: number;
     estimatedDelivery: string;
   }>({
-    subOrderId: "SV - 20260822 -7C1A1FA0",
-    paymentStatus: "Pending",
-    paymentMethod: "COD",
-    orderStatus: "Processing",
-    inventoryStatus: "Reserved",
-    trackingNumber: "123456789012",
+    subOrderId: "",
+    paymentStatus: "",
+    paymentMethod: "",
+    orderStatus: "",
+    inventoryStatus: "",
+    trackingNumber: "",
     deliveryMethod: "Standard Delivery",
-    deliveryPartner: "Delhivery",
-    deliveryCharge: 60,
-    estimatedDelivery: "3-5 Business Days",
+    deliveryPartner: "",
+    deliveryCharge: 0,
+    estimatedDelivery: "",
   });
 
-  const [productList, setProductList] = useState<Product[]>(defaultProducts);
+  const [productList, setProductList] = useState<Product[]>([]);
   const [orderCounts, setOrderCounts] = useState<{
     total: number;
     active: number;
@@ -169,7 +169,7 @@ export default function OrderDetails() {
   const [shipped, setShipped] = useState(false);
   const [cancelled, setCancelled] = useState(false);
 
-  const [confirmedAt, setConfirmedAt] = useState<string | null>("07 Jul 2026 • 10:20 AM");
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
   const [packedAt, setPackedAt] = useState<string | null>(null);
   const [shippedAt, setShippedAt] = useState<string | null>(null);
 
@@ -272,7 +272,7 @@ export default function OrderDetails() {
       firstOrder.order_id ||
       item.orderId ||
       item.order_id ||
-      (item._id ? `#ORD-${item._id.slice(-5).toUpperCase()}` : "#ORD-1052");
+      (item._id ? `#ORD-${item._id.slice(-5).toUpperCase()}` : "");
     setOrderIdLabel(displayId);
 
     const dateObj = new Date(item.createdAt || firstOrder.createdAt || item.date || item.orderDate || Date.now());
@@ -286,8 +286,8 @@ export default function OrderDetails() {
         minute: "2-digit",
         hour12: true,
       })}`
-      : "07 Jul 2026 • 10:15 AM";
-    setOrderDateLabel(`Placed on ${dateStr}`);
+      : "";
+    setOrderDateLabel(dateStr ? `Placed on ${dateStr}` : "");
 
     // Customer details extraction
     const u =
@@ -335,7 +335,7 @@ export default function OrderDetails() {
       ba.email ||
       "";
 
-    if (!name) name = email ? email.split("@")[0] : phone ? `Customer (${phone.slice(-4)})` : "Guest Customer";
+    if (!name) name = email ? email.split("@")[0] : phone ? `Customer (${phone.slice(-4)})` : "";
 
     const formatAddr = (addrObj: any) => {
       if (!addrObj) return "";
@@ -424,13 +424,20 @@ export default function OrderDetails() {
     let fAmt = 0;
     let tAmt = 0;
 
+    const hasCancelledOrder = canCount > 0 || (item.refund_status && item.refund_status !== "none" && item.refund_status !== "0");
+
     if (isCod) {
       fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt;
       tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
-    } else if (isPaidOrUpi && rawRemFAmt !== undefined) {
-      fAmt = rawRemFAmt;
-      tAmt = rawRemFAmt;
-    } else if (rawRemFAmt !== undefined && rawRemFAmt > 0) {
+    } else if (isPaidOrUpi) {
+      if (hasCancelledOrder && rawRemFAmt !== undefined) {
+        fAmt = rawRemFAmt;
+        tAmt = rawRemFAmt;
+      } else {
+        fAmt = rawFAmt > 0 ? rawFAmt : rawOrigFAmt;
+        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
+      }
+    } else if (hasCancelledOrder && rawRemFAmt !== undefined) {
       fAmt = rawRemFAmt;
       tAmt = rawRemFAmt;
     } else {
@@ -496,7 +503,7 @@ export default function OrderDetails() {
           prod.product_name ||
           prod.name ||
           p.name ||
-          "Wild Forest Multiflora Honey";
+          "";
 
         const brand = prod.brand || "";
         const description = prod.description || "";
@@ -521,9 +528,9 @@ export default function OrderDetails() {
           prod.image ||
           p.image_url ||
           p.image ||
-          "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+          "";
         if (typeof image === "object" && image) {
-          image = image.image_url || image.url || "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+          image = image.image_url || image.url || "";
         }
 
         const itemOrderStatus =
@@ -579,9 +586,9 @@ export default function OrderDetails() {
     const invStatus = firstOrder.inventory_status || item.inventory_status || "reserved";
     const payStatus = item.payment_status || firstOrder.payment_status || item.payment?.status || "pending";
     const payMethod = (item.payment_mode || firstOrder.payment_mode || item.payment_method || item.payment?.method || "COD").toUpperCase();
-    const tracking = item.trackingNumber || firstOrder.trackingNumber || item.tracking_number || "123456789012";
-    const courier = item.courier || firstOrder.courier || item.delivery_partner || "Delhivery";
-    const shippingCharge = Number(item.shipping_charge || item.shippingCharge || 60);
+    const tracking = item.trackingNumber || firstOrder.trackingNumber || item.tracking_number || "";
+    const courier = item.courier || firstOrder.courier || item.delivery_partner || "";
+    const shippingCharge = Number(item.shipping_charge || item.shippingCharge || 0);
 
     setOrderMetaData({
       subOrderId,

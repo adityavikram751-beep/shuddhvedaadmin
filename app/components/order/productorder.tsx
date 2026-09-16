@@ -55,17 +55,7 @@ interface Order {
 
 function extractCustomerDetails(rawItem: any, index: number): { name: string; phone: string; email: string } {
   if (!rawItem) {
-    const fallbackNames = ["Rahul Sharma", "Priya Patel", "Aman Verma", "Sneha Singh", "Mohit Kumar"];
-    const fallbackMobiles = ["98765 43210", "98765 12345", "98765 88765", "98765 22221", "98765 33332"];
-    const fallbackEmails = [
-      "rahul.sharma@example.com",
-      "priya.patel@example.com",
-      "aman.verma@example.com",
-      "sneha.singh@example.com",
-      "mohit.kumar@example.com",
-    ];
-    const idx = index % 5;
-    return { name: fallbackNames[idx], phone: fallbackMobiles[idx], email: fallbackEmails[idx] };
+    return { name: "", phone: "", email: "" };
   }
 
   let item = rawItem;
@@ -173,8 +163,7 @@ function extractCustomerDetails(rawItem: any, index: number): { name: string; ph
     } else if (phone) {
       name = `Customer (${phone.slice(-4)})`;
     } else {
-      const fallbackNames = ["Rahul Sharma", "Priya Patel", "Aman Verma", "Sneha Singh", "Mohit Kumar"];
-      name = fallbackNames[index % 5];
+      name = "";
     }
   }
 
@@ -184,7 +173,7 @@ function extractCustomerDetails(rawItem: any, index: number): { name: string; ph
 function mapApiOrderToUiOrder(item: any, index: number): Order {
   const mongoId = String(item._id || item.id || item.group_id || item.orderId || item.order_id || item.purchase_id || `order-${index}`);
   const groupId = String(item.group_id || item.groupId || item.order_group_id || "");
-  const displayId = String(item.group_id || item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#SV${10254 + index}`));
+  const displayId = String(item.group_id || item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : ""));
 
   const { name: customerName, phone: customerPhone, email: customerEmail } = extractCustomerDetails(item, index);
 
@@ -246,7 +235,7 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
         pObj.product_name ||
         pObj.name ||
         p.name ||
-        "Wild Forest Multiflora Honey";
+        "";
 
       const weight = pObj.variant?.weight || p.variant || p.weight || p.quantityUnit || p.unit || "";
       const unit = pObj.variant?.unit || p.unit || p.quantityUnit || "";
@@ -258,10 +247,10 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
         pObj.image?.image_url ||
         p.image ||
         p.image_url ||
-        "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+        "";
 
       if (typeof rawImg === "object" && rawImg) {
-        rawImg = rawImg.image_url || rawImg.url || "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60";
+        rawImg = rawImg.image_url || rawImg.url || "";
       }
 
       return {
@@ -287,12 +276,19 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     ? Number(item.remainingAmount)
     : undefined;
 
+  const canCountVal = Number(item.cancelledOrderCount ?? item.cancelled_order_count ?? og.cancelledOrderCount ?? og.cancelled_order_count ?? (Array.isArray(item.cancelledOrders) ? item.cancelledOrders.length : 0));
+  const hasCancelledOrder = canCountVal > 0 || (refundStatus && refundStatus !== "none" && refundStatus !== "0");
+
   let displayNumAmount = finalNumAmount;
   if (isCod) {
     displayNumAmount = finalNumAmount;
-  } else if (isPaidOrUpi && remNumAmount !== undefined) {
-    displayNumAmount = remNumAmount;
-  } else if (remNumAmount !== undefined) {
+  } else if (isPaidOrUpi) {
+    if (hasCancelledOrder && remNumAmount !== undefined) {
+      displayNumAmount = remNumAmount;
+    } else {
+      displayNumAmount = finalNumAmount;
+    }
+  } else if (hasCancelledOrder && remNumAmount !== undefined) {
     displayNumAmount = remNumAmount;
   } else {
     displayNumAmount = finalNumAmount;
@@ -353,126 +349,7 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   };
 }
 
-const allOrders: Order[] = [
-  {
-    id: "#SV10254",
-    customer: "Rahul Sharma",
-    phone: "9876543210",
-    email: "",
-    payment: "Paid (UPI)",
-    paymentStatus: "Paid",
-    paymentMode: "UPI",
-    paymentDot: "bg-emerald-500",
-    status: "Processing",
-    products: [
-      {
-        name: "Wild Forest Multiflora Honey",
-        variant: "1kg",
-        qty: 2,
-        image: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60",
-      },
-      {
-        name: "Gift Box Deluxe",
-        variant: "Pack of 1",
-        qty: 1,
-        image: "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=100&auto=format&fit=crop&q=60",
-        bold: true,
-      },
-    ],
-    moreCount: 1,
-    amount: "₹1,299",
-    date: "31 May 2024",
-    time: "10:45 AM",
-  },
-  {
-    id: "#SV10255",
-    customer: "Priya Patel",
-    phone: "9876512345",
-    email: "",
-    payment: "Paid (Card)",
-    paymentStatus: "Paid",
-    paymentMode: "Card",
-    paymentDot: "bg-emerald-500",
-    status: "Packed",
-    products: [
-      {
-        name: "Mustard Honey",
-        variant: "500g",
-        qty: 1,
-        image: "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=100&auto=format&fit=crop&q=60",
-      },
-    ],
-    amount: "₹699",
-    date: "31 May 2024",
-    time: "09:30 AM",
-  },
-  {
-    id: "#SV10256",
-    customer: "Aman Verma",
-    phone: "9876588765",
-    email: "",
-    payment: "COD",
-    paymentStatus: "Pending",
-    paymentMode: "COD",
-    paymentDot: "bg-blue-500",
-    status: "Shipped",
-    products: [
-      {
-        name: "Gift Box Deluxe",
-        variant: "Pack of 1",
-        qty: 1,
-        image: "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=100&auto=format&fit=crop&q=60",
-      },
-    ],
-    amount: "₹1,899",
-    date: "31 May 2024",
-    time: "08:15 AM",
-  },
-  {
-    id: "#SV10257",
-    customer: "Sneha Singh",
-    phone: "9876522221",
-    email: "",
-    payment: "Paid (UPI)",
-    paymentStatus: "Paid",
-    paymentMode: "UPI",
-    paymentDot: "bg-emerald-500",
-    status: "Delivered",
-    products: [
-      {
-        name: "Raw Sidr Honey",
-        variant: "1kg",
-        qty: 3,
-        image: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60",
-      },
-    ],
-    amount: "₹2,250",
-    date: "31 May 2024",
-    time: "06:40 PM",
-  },
-  {
-    id: "#SV10258",
-    customer: "Mohit Kumar",
-    phone: "9876533332",
-    email: "",
-    payment: "Refunded",
-    paymentStatus: "Refunded",
-    paymentMode: "UPI",
-    paymentDot: "bg-red-500",
-    status: "Cancelled",
-    products: [
-      {
-        name: "Tulsi Honey",
-        variant: "500g",
-        qty: 2,
-        image: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=100&auto=format&fit=crop&q=60",
-      },
-    ],
-    amount: "₹950",
-    date: "31 May 2024",
-    time: "05:20 PM",
-  },
-];
+const allOrders: Order[] = [];
 
 const statusStyles: Record<string, string> = {
   Processing: "bg-amber-50 text-amber-700 border border-amber-200 font-bold",
@@ -487,7 +364,7 @@ const statusStyles: Record<string, string> = {
 const statusOptions = ["All Statuses", "Processing", "Packed", "Shipped", "Delivered", "Cancelled"];
 const paymentOptions = ["All Payments", "Paid (UPI)", "Paid (Card)", "COD", "Refunded"];
 
-const TOTAL_RECORDS = 1248;
+const TOTAL_RECORDS = 0;
 const TOTAL_PAGES = 125;
 
 function FilterDropdown({
@@ -626,11 +503,9 @@ export default function OrdersTable() {
           ? json.data.orders
           : [];
 
-        if (rawList.length > 0) {
-          const mapped = rawList.map((item, idx) => mapApiOrderToUiOrder(item, idx));
-          setOrders(mapped);
-          setTotalRecords(json.total || json.pagination?.totalRecords || mapped.length);
-        }
+        const mapped = rawList.map((item, idx) => mapApiOrderToUiOrder(item, idx));
+        setOrders(mapped);
+        setTotalRecords(json.total || json.pagination?.totalRecords || mapped.length);
       }
     } catch (err) {
       console.error("Error fetching orders from API:", err);
@@ -739,10 +614,10 @@ export default function OrdersTable() {
   }, [currentPage, totalPages]);
 
   return (
-    <div className="w-full mt-6 space-y-4">
+    <div className="w-full mt-4 md:mt-6 space-y-4 min-w-0 overflow-hidden">
       {/* Filters bar */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 sm:p-5 min-w-0">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3 min-w-0">
           {/* Search */}
           <div className="relative flex-1 min-w-0">
             <Search
@@ -803,47 +678,47 @@ export default function OrdersTable() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-w-0 w-full">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-100 text-left">
-                <th className="w-12 px-4 py-3.5">
+              <tr className="border-b border-gray-100 text-left bg-gray-50/50">
+                <th className="w-9 px-2.5 py-3">
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleAll}
-                    className="w-4 h-4 rounded border-gray-300 accent-orange-500 cursor-pointer"
+                    className="w-3.5 h-3.5 rounded border-gray-300 accent-orange-500 cursor-pointer"
                   />
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Order ID
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Customer
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Payment
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Status
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-amber-600 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-amber-600 text-[11px] uppercase tracking-tight">
                   Total Order
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-emerald-600 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-emerald-600 text-[11px] uppercase tracking-tight">
                   Active Order
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-red-600 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-red-600 text-[11px] uppercase tracking-tight">
                   Cancel Order
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Amount
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight">
                   Date
                 </th>
-                <th className="px-4 py-3.5 font-semibold text-gray-500 text-xs uppercase tracking-wide text-right">
+                <th className="px-2.5 py-3 font-bold text-gray-500 text-[11px] uppercase tracking-tight text-right">
                   Action
                 </th>
               </tr>
@@ -851,16 +726,16 @@ export default function OrdersTable() {
             <tbody>
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={11} className="px-3 py-12 text-center text-gray-400 text-xs">
                     <div className="flex items-center justify-center gap-2">
-                      <Loader2 size={18} className="animate-spin text-orange-500" />
+                      <Loader2 size={16} className="animate-spin text-orange-500" />
                       <span>Loading orders from server...</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={11} className="px-3 py-10 text-center text-gray-400 text-xs">
                     No orders match your filters.
                   </td>
                 </tr>
@@ -871,39 +746,39 @@ export default function OrdersTable() {
                     <tr
                       key={order.rawId || order.id}
                       onClick={() => viewOrder(order.id, order.rawId)}
-                      className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors cursor-pointer"
+                      className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/70 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-2.5 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleOne(order.id)}
-                          className="w-4 h-4 rounded border-gray-300 accent-orange-500 cursor-pointer"
+                          className="w-3.5 h-3.5 rounded border-gray-300 accent-orange-500 cursor-pointer"
                         />
                       </td>
-                      <td className="px-4 py-4 font-semibold text-gray-800 whitespace-nowrap">
+                      <td className="px-2.5 py-3 font-bold text-gray-900 font-mono whitespace-nowrap text-xs">
                         {order.id}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="font-semibold text-gray-800 text-sm leading-snug">{order.customer}</p>
+                      <td className="px-2.5 py-3 whitespace-nowrap">
+                        <p className="font-bold text-gray-900 text-xs leading-snug">{order.customer}</p>
                         {order.email && (
-                          <p className="text-xs text-gray-400 font-medium truncate max-w-[190px]">
+                          <p className="text-[11px] text-gray-400 font-medium truncate max-w-[160px]">
                             {order.email}
                           </p>
                         )}
                         {order.phone && (
-                          <p className="text-xs text-gray-400 font-medium">{order.phone}</p>
+                          <p className="text-[11px] text-gray-400 font-medium">{order.phone}</p>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2.5 py-3 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
-                          <span className="flex items-center gap-1.5 text-xs font-semibold">
+                          <span className="flex items-center gap-1.5 text-xs font-bold">
                             <span
                               className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                 order.paymentStatus.toLowerCase() === "refunded"
                                   ? "bg-red-500"
                                   : order.paymentStatus.toLowerCase() === "pending"
-                                  ? "bg-blue-500"
+                                  ? "bg-amber-500"
                                   : "bg-emerald-500"
                               }`}
                             />
@@ -911,43 +786,43 @@ export default function OrdersTable() {
                               className={
                                 order.paymentStatus.toLowerCase() === "refunded"
                                   ? "text-red-500"
-                                  : "text-gray-800"
+                                  : "text-gray-900"
                               }
                             >
                               {order.paymentStatus}
                             </span>
                           </span>
-                          <span className="text-[11px] text-gray-400 font-medium">
+                          <span className="text-[10px] text-gray-400 font-semibold uppercase">
                             {order.paymentMode}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-2.5 py-3 whitespace-nowrap">
                         <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                             statusStyles[order.status]
                           }`}
                         >
                           {order.status}
                         </span>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
-                          <Box size={14} className="text-amber-500 shrink-0" />
+                      <td className="px-2.5 py-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
+                          <Box size={12} className="text-amber-500 shrink-0" />
                           {order.orderCount || 1} {(order.orderCount || 1) === 1 ? "Order" : "Orders"}
                         </span>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2.5 py-3 whitespace-nowrap">
                         {order.activeOrderCount !== undefined ? (
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               order.activeOrderCount > 0
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
                                 : "bg-gray-50 text-gray-400 border border-gray-200"
                             }`}
                           >
                             <CheckCircle2
-                              size={13}
+                              size={12}
                               className={
                                 order.activeOrderCount > 0 ? "text-emerald-500" : "text-gray-400"
                               }
@@ -956,14 +831,14 @@ export default function OrdersTable() {
                           </span>
                         ) : (
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               order.status !== "Cancelled"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
                                 : "bg-gray-50 text-gray-400 border border-gray-200"
                             }`}
                           >
                             <CheckCircle2
-                              size={13}
+                              size={12}
                               className={
                                 order.status !== "Cancelled" ? "text-emerald-500" : "text-gray-400"
                               }
@@ -972,17 +847,17 @@ export default function OrdersTable() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2.5 py-3 whitespace-nowrap">
                         {order.cancelledOrderCount !== undefined ? (
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               order.cancelledOrderCount > 0
                                 ? "bg-red-50 text-red-700 border border-red-200/80"
                                 : "bg-gray-50 text-gray-400 border border-gray-200"
                             }`}
                           >
                             <XCircle
-                              size={13}
+                              size={12}
                               className={
                                 order.cancelledOrderCount > 0 ? "text-red-500" : "text-gray-400"
                               }
@@ -991,14 +866,14 @@ export default function OrdersTable() {
                           </span>
                         ) : (
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               order.status === "Cancelled"
                                 ? "bg-red-50 text-red-700 border border-red-200/80"
                                 : "bg-gray-50 text-gray-400 border border-gray-200"
                             }`}
                           >
                             <XCircle
-                              size={13}
+                              size={12}
                               className={
                                 order.status === "Cancelled" ? "text-red-500" : "text-gray-400"
                               }
@@ -1007,31 +882,31 @@ export default function OrdersTable() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-2.5 py-3 whitespace-nowrap">
                         <div className="flex flex-col">
-                          <span className="font-bold text-gray-900 text-sm">
+                          <span className="font-bold text-gray-900 text-xs">
                             {order.amount}
                           </span>
                           {order.remainingAmount !== undefined &&
                             order.originalAmount &&
                             order.originalAmount !== order.amount && (
-                              <span className="text-[11px] text-gray-400 line-through">
+                              <span className="text-[10px] text-gray-400 line-through">
                                 {order.originalAmount}
                               </span>
                             )}
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <p className="text-gray-700">{order.date}</p>
-                        <p className="text-xs text-gray-400">{order.time}</p>
+                      <td className="px-2.5 py-3 whitespace-nowrap">
+                        <p className="font-semibold text-gray-800 text-[11px] leading-tight">{order.date}</p>
+                        <p className="text-[10px] text-gray-400">{order.time}</p>
                       </td>
-                      <td className="px-4 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-2.5 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => viewOrder(order.id, order.rawId)}
-                          className="p-1.5 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-500 transition-colors"
+                          className="p-1 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-500 transition-colors cursor-pointer"
                           aria-label={`View ${order.id}`}
                         >
-                          <Eye size={17} />
+                          <Eye size={16} />
                         </button>
                       </td>
                     </tr>
