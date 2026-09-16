@@ -1131,36 +1131,12 @@ export default function OrderDetails() {
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order {orderIdLabel}</h1>
-            <span className={`px-3 py-0.5 rounded-full text-xs font-bold border transition-colors ${status === "Confirmed" || status === "Shipped" || status === "Packed"
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : status === "Cancelled"
-                ? "bg-red-50 text-red-700 border-red-200"
-                : "bg-amber-50 text-amber-700 border-amber-200"
-              }`}>
-              {status}
-            </span>
             {loadingOrder && <Loader2 size={16} className="animate-spin text-orange-500" />}
           </div>
           <p className="text-xs text-slate-400 mt-1">{orderDateLabel}</p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 relative">
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Printer size={14} />
-            Print Invoice
-          </button>
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Download size={14} />
-            Download Invoice
-          </button>
-        </div>
+
       </div>
 
       {/* Main Grid */}
@@ -1501,14 +1477,14 @@ export default function OrderDetails() {
             <div className="space-y-3">
               <button
                 onClick={handleConfirm}
-                disabled={cancelled}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${cancelled
-                  ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                  : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98]"
+                disabled={confirmed || cancelled}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${confirmed || cancelled
+                  ? "border border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed shadow-none"
+                  : "bg-[#d97706] text-white hover:bg-[#b45309] cursor-pointer active:scale-[0.98] shadow-sm"
                   }`}
               >
                 <CheckCircle2 size={15} />
-                {confirmed ? "Confirm / Dispatch Order" : "Confirm Order"}
+                {confirmed ? "Order Confirmed" : "Confirm Order"}
               </button>
 
               <button
