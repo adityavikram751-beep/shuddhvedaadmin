@@ -230,28 +230,55 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   let productsList: Order["products"] = [];
   if (rawProducts.length > 0) {
     productsList = rawProducts.slice(0, 2).map((p: any, idx: number) => {
-      const pObj = p.product_details?.product || p.product || p;
+      const pd = p.product_details || p.productDetails || {};
+      const giftObj =
+        p.giftBox ||
+        p.gift ||
+        p.gift_box ||
+        p.gift_details ||
+        pd.giftBox ||
+        pd.gift ||
+        pd.gift_box ||
+        pd.gift_details ||
+        {};
+      const pObj = pd.product || p.product || (Object.keys(giftObj).length > 0 ? giftObj : p);
+
       const pName =
+        giftObj.name ||
+        giftObj.title ||
         pObj.product_name ||
         pObj.name ||
         p.name ||
         "";
 
-      const weight = pObj.variant?.weight || p.variant || p.weight || p.quantityUnit || p.unit || "";
-      const unit = pObj.variant?.unit || p.unit || p.quantityUnit || "";
-      const variantStr = weight ? (typeof weight === "number" ? `${weight}${unit || "g"}` : String(weight)) : "";
+      const weight = pObj.variant?.weight || p.variant || p.weight || p.quantityUnit || p.unit || giftObj.jar_count || "";
+      const unit = pObj.variant?.unit || p.unit || p.quantityUnit || (giftObj.jar_count ? "Jars" : "");
+      const variantStr = weight
+        ? (typeof weight === "number" ? `${weight}${unit || "g"}` : String(weight))
+        : (giftObj.name ? "Gift Box" : "");
 
       const qty = Number(p.quantity || p.qty || 1);
 
-      let rawImg =
-        pObj.image?.image_url ||
-        p.image ||
-        p.image_url ||
-        "";
+      const extractImg = (val: any): string => {
+        if (!val) return "";
+        if (typeof val === "string" && val.trim().length > 0) return val.trim();
+        if (typeof val === "object") {
+          const url = val.image_url || val.url || val.secure_url || val.image || val.src || val.path || "";
+          if (typeof url === "string" && url.trim().length > 0) return url.trim();
+        }
+        return "";
+      };
 
-      if (typeof rawImg === "object" && rawImg) {
-        rawImg = rawImg.image_url || rawImg.url || "";
-      }
+      const rawImg =
+        extractImg(giftObj.image) ||
+        extractImg(giftObj.image_url) ||
+        extractImg(pd.image) ||
+        extractImg(pd.image_url) ||
+        extractImg(pObj.image) ||
+        extractImg(pObj.image_url) ||
+        extractImg(p.image) ||
+        extractImg(p.image_url) ||
+        "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=150&auto=format&fit=crop&q=80";
 
       return {
         name: pName,
@@ -269,7 +296,28 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   const isCod = payMode === "COD" || String(item.payment_mode || "").toLowerCase() === "cod";
   const isPaidOrUpi = payStatusRaw === "paid" || payStatusRaw === "success" || payMode === "UPI" || String(item.payment_mode || "").toLowerCase() === "upi";
 
-  const finalNumAmount = Number(item.finalAmount ?? og.finalAmount ?? item.totalAmount ?? og.totalAmount ?? item.total_amount ?? item.amount ?? item.grandTotal ?? 0);
+  const rawOrigFAmt = Number(
+    item.original_finalAmount ??
+    item.originalFinalAmount ??
+    item.original_final_amount ??
+    og?.original_finalAmount ??
+    og?.originalFinalAmount ??
+    og?.original_final_amount ??
+    0
+  );
+
+  const finalNumAmount = Number(
+    rawOrigFAmt > 0
+      ? rawOrigFAmt
+      : (item.finalAmount ??
+        og.finalAmount ??
+        item.totalAmount ??
+        og.totalAmount ??
+        item.total_amount ??
+        item.amount ??
+        item.grandTotal ??
+        0)
+  );
   const remNumAmount = item.remaining_amount !== undefined && item.remaining_amount !== null
     ? Number(item.remaining_amount)
     : item.remainingAmount !== undefined && item.remainingAmount !== null

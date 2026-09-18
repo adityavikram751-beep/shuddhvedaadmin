@@ -246,6 +246,8 @@ export default function OrderDetails() {
   const grandTotal =
     orderAmounts.finalAmount > 0
       ? orderAmounts.finalAmount
+      : orderAmounts.originalFinalAmount && orderAmounts.originalFinalAmount > 0
+      ? orderAmounts.originalFinalAmount
       : hasCancelledItem && isMultipleProducts && activeSubtotal > 0
       ? activeSubtotal
       : activeSubtotal > 0
@@ -478,43 +480,124 @@ export default function OrderDetails() {
       let weightSum = 0;
       let saveSum = 0;
       parsedProds = rawProds.map((p: any) => {
-        const pd = p.product_details || {};
-        const prod = pd.product || p.product || p;
-        const variant = prod.variant || pd.variant || {};
+        const pd = p.product_details || p.productDetails || {};
+        const giftObj =
+          p.giftBox ||
+          p.gift ||
+          p.gift_box ||
+          p.gift_details ||
+          p.custom_gift ||
+          p.custom_gift_box ||
+          p.custom_box ||
+          p.customBox ||
+          p.customGift ||
+          pd.giftBox ||
+          pd.gift ||
+          pd.gift_box ||
+          pd.gift_details ||
+          pd.custom_gift ||
+          pd.custom_gift_box ||
+          pd.custom_box ||
+          pd.customBox ||
+          pd.customGift ||
+          {};
+
+        const prod = pd.product || p.product || (Object.keys(giftObj).length > 0 ? giftObj : p);
+        const variant = prod.variant || pd.variant || p.variant || {};
+
+        const extractImg = (val: any): string => {
+          if (!val) return "";
+          if (typeof val === "string" && val.trim().length > 0) return val.trim();
+          if (typeof val === "object") {
+            const url = val.image_url || val.url || val.secure_url || val.image || val.src || val.path || "";
+            if (typeof url === "string" && url.trim().length > 0) return url.trim();
+          }
+          return "";
+        };
+
+        const image =
+          extractImg(giftObj.image) ||
+          extractImg(giftObj.image_url) ||
+          extractImg(giftObj.imageUrl) ||
+          extractImg(pd.image) ||
+          extractImg(pd.image_url) ||
+          extractImg(pd.imageUrl) ||
+          extractImg(p.image) ||
+          extractImg(p.image_url) ||
+          extractImg(p.imageUrl) ||
+          extractImg(p.img) ||
+          extractImg(p.gift_image) ||
+          extractImg(p.gift_box_image) ||
+          extractImg(prod.image) ||
+          extractImg(prod.image_url) ||
+          extractImg(prod.imageUrl) ||
+          extractImg(variant.image) ||
+          extractImg(variant.image_url) ||
+          "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=150&auto=format&fit=crop&q=80";
 
         const pName =
+          giftObj.name ||
+          giftObj.title ||
           prod.product_name ||
           prod.name ||
+          p.product_name ||
           p.name ||
-          "";
+          p.title ||
+          pd.product_name ||
+          pd.name ||
+          "Product";
 
-        const brand = prod.brand || "";
-        const description = prod.description || "";
+        const brand = prod.brand || giftObj.brand || "";
+        const description = prod.description || giftObj.description || "";
 
-        const weightVal = variant.weight || p.variant || p.weight || pd.totalWeight || "";
-        const unitVal = variant.unit || p.unit || "g";
-        const variantStr = weightVal ? (typeof weightVal === "number" ? `${weightVal}${unitVal}` : String(weightVal)) : "250g";
+        const weightVal = variant.weight || p.weight || pd.totalWeight || giftObj.jar_count || "";
+        const unitVal = variant.unit || p.unit || (giftObj.jar_count ? "Jars" : "g");
+        const variantStr = weightVal
+          ? (typeof weightVal === "number" ? `${weightVal}${unitVal}` : String(weightVal))
+          : (p.variant_name || p.variantName || p.variant || giftObj.variant || (giftObj.jar_count ? `${giftObj.jar_count} Jars` : (giftObj.name ? "Gift Box" : "Standard")));
 
         const qty = Number(p.quantity || p.qty || 1);
-        const price = Number(variant.price || pd.finalAmount || p.price || 0);
-        const mrp = Number(variant.mrp || 0);
-        const save = Number(variant.save || pd.totalsave || 0);
+
+        const rawItemPrice = Number(
+          p.original_finalAmount ??
+          p.originalFinalAmount ??
+          p.original_final_amount ??
+          pd.original_finalAmount ??
+          pd.originalFinalAmount ??
+          pd.original_final_amount ??
+          p.finalAmount ??
+          p.final_amount ??
+          pd.finalAmount ??
+          pd.final_amount ??
+          variant.price ??
+          p.price ??
+          pd.price ??
+          giftObj.price ??
+          0
+        );
+        const price = rawItemPrice > 0 ? rawItemPrice : Number(giftObj.price || 0);
+
+        const rawItemMrp = Number(
+          p.original_totalAmount ??
+          p.originalTotalAmount ??
+          p.original_total_amount ??
+          pd.original_totalAmount ??
+          pd.originalTotalAmount ??
+          pd.original_total_amount ??
+          variant.mrp ??
+          p.mrp ??
+          pd.mrp ??
+          giftObj.mrp ??
+          0
+        );
+        const mrp = rawItemMrp > 0 ? rawItemMrp : Number(giftObj.mrp || 0);
+        const save = Number(variant.save || pd.totalsave || p.save || (mrp > price ? mrp - price : 0));
 
         if (pd.totalWeight) weightSum += Number(pd.totalWeight);
         else if (typeof weightVal === "number") weightSum += weightVal * qty;
 
         if (pd.totalsave) saveSum += Number(pd.totalsave);
         else if (variant.save) saveSum += Number(variant.save) * qty;
-
-        let image =
-          prod.image?.image_url ||
-          prod.image ||
-          p.image_url ||
-          p.image ||
-          "";
-        if (typeof image === "object" && image) {
-          image = image.image_url || image.url || "";
-        }
 
         const itemOrderStatus =
           p._parentOrderStatus ||
@@ -568,6 +651,13 @@ export default function OrderDetails() {
     const rawOrigFAmt = Number(
       item.original_finalAmount ??
       item.originalFinalAmount ??
+      item.original_final_amount ??
+      firstOrder.original_finalAmount ??
+      firstOrder.originalFinalAmount ??
+      firstOrder.original_final_amount ??
+      og.original_finalAmount ??
+      og.originalFinalAmount ??
+      og.original_final_amount ??
       item.finalAmount ??
       firstOrder.finalAmount ??
       item.final_amount ??
@@ -603,8 +693,7 @@ export default function OrderDetails() {
       firstOrder.amount ??
       item.grandTotal ??
       firstOrder.grandTotal ??
-      rawOrigFAmt ??
-      allProdsTotal ??
+      (rawOrigFAmt > 0 ? rawOrigFAmt : allProdsTotal) ??
       0
     );
 
@@ -645,39 +734,34 @@ export default function OrderDetails() {
     let fAmt = 0;
     let tAmt = 0;
 
-    if (isSingleProdOrder) {
-      // Single product: ALWAYS show single product final amount (e.g. 449). Never 531, never remaining amount!
-      fAmt = rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigFAmt);
-      tAmt = rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigTAmt);
+    if (isCod) {
+      // COD orders: prioritize original_finalAmount if present (e.g. 337.5)
+      fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : (rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : 0));
+      tAmt = rawOrigTAmt > 0 ? rawOrigTAmt : (rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : fAmt));
+    } else if (isSingleProdOrder) {
+      // Single product: prioritize original_finalAmount if present
+      fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : (rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : 0));
+      tAmt = rawOrigTAmt > 0 ? rawOrigTAmt : (rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : fAmt));
     } else if (isMultipleWithCancellation) {
       // Multiple products (e.g. 2 items) where 1 is cancelled and 1 is confirmed:
-      // In paid orders (isPaidOrUpi), show the remaining amount of the confirmed product!
       const computedRemAmount =
         rawRemFAmt !== undefined && rawRemFAmt > 0
           ? rawRemFAmt
           : activeProdsTotal > 0
           ? activeProdsTotal
-          : rawFAmt;
+          : (rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt);
 
       if (isPaidOrUpi) {
         fAmt = computedRemAmount;
         tAmt = computedRemAmount;
-      } else if (isCod) {
-        fAmt = computedRemAmount;
-        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
       } else {
-        fAmt = computedRemAmount;
-        tAmt = computedRemAmount;
+        fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : computedRemAmount;
+        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
       }
     } else {
       // Multiple products, none cancelled
-      if (isCod) {
-        fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : rawFAmt;
-        tAmt = rawTAmt > 0 ? rawTAmt : rawOrigTAmt;
-      } else {
-        fAmt = rawFAmt > 0 ? rawFAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigFAmt);
-        tAmt = rawTAmt > 0 ? rawTAmt : (allProdsTotal > 0 ? allProdsTotal : rawOrigTAmt);
-      }
+      fAmt = rawOrigFAmt > 0 ? rawOrigFAmt : (rawFAmt > 0 ? rawFAmt : allProdsTotal);
+      tAmt = rawTAmt > 0 ? rawTAmt : (rawOrigTAmt > 0 ? rawOrigTAmt : allProdsTotal);
     }
 
     setOrderAmounts({
@@ -1322,7 +1406,7 @@ export default function OrderDetails() {
     const dispCod = orderAmounts.codAmount;
     const dispDiscount = orderAmounts.couponDiscount > 0 ? orderAmounts.couponDiscount : discount;
     const dispSave = orderAmounts.totalSave;
-    const dispFinal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (grandTotal > 0 ? grandTotal : dispTotal);
+    const dispFinal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (orderAmounts.originalFinalAmount && orderAmounts.originalFinalAmount > 0 ? orderAmounts.originalFinalAmount : (grandTotal > 0 ? grandTotal : dispTotal));
     const currentStatus = confirmed ? "Confirmed" : (orderMetaData.orderStatus || status || "Pending");
 
     // Brand accent banner
@@ -1883,7 +1967,7 @@ export default function OrderDetails() {
               <div>
                 <p className="text-slate-400 font-medium mb-1">Final Amount</p>
                 <p className="font-bold text-slate-900">
-                  ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : grandTotal).toFixed(2)}
+                  ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (orderAmounts.originalFinalAmount && orderAmounts.originalFinalAmount > 0 ? orderAmounts.originalFinalAmount : grandTotal)).toFixed(2)}
                 </p>
               </div>
               {orderAmounts.totalSave > 0 && (
@@ -2048,7 +2132,7 @@ export default function OrderDetails() {
             <div className="flex justify-between items-baseline pt-4 border-t border-slate-100 mt-6">
               <span className="font-bold text-slate-900 text-sm">Final Amount</span>
               <span className="font-black text-slate-900 text-2xl tracking-tight">
-                ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : grandTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                ₹{(orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (orderAmounts.originalFinalAmount && orderAmounts.originalFinalAmount > 0 ? orderAmounts.originalFinalAmount : grandTotal)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </span>
             </div>
           </div>
@@ -2244,7 +2328,7 @@ export default function OrderDetails() {
                 const activeProducts = productList.filter((p) => !p.isCancelled);
                 if (activeProducts.length === 0) return null;
                 const activeSubtotal = activeProducts.reduce((s, p) => s + p.price * p.qty, 0);
-                const displayTotal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : activeSubtotal;
+                const displayTotal = orderAmounts.finalAmount > 0 ? orderAmounts.finalAmount : (orderAmounts.originalFinalAmount && orderAmounts.originalFinalAmount > 0 ? orderAmounts.originalFinalAmount : activeSubtotal);
 
                 return (
                   <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 space-y-3 shadow-xs">

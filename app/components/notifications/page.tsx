@@ -191,7 +191,7 @@ export default function NotificationsPage() {
           const displayId = item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#ORD-${1000 + idx}`);
           const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
           const codAmt = og.cod_amount ?? item.cod_amount ?? 0;
-          const finalAmt = og.finalAmount ?? item.finalAmount ?? item.totalAmount ?? item.amount ?? 0;
+          const finalAmt = item.original_finalAmount ?? item.originalFinalAmount ?? item.original_final_amount ?? og.original_finalAmount ?? og.originalFinalAmount ?? og.original_final_amount ?? og.finalAmount ?? item.finalAmount ?? item.totalAmount ?? item.amount ?? 0;
           const createdAt = asString(item.createdAt) || asString(item.date) || "";
 
           return {
