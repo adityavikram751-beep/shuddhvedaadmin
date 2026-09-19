@@ -157,46 +157,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         }));
       }
 
-      // 2. Fetch order notifications from GET /api/admin/order-dashboard/orders
-      const orderRes = await fetch(`${API_BASE_URL}/api/admin/order-dashboard/orders`, {
-        method: "GET",
-        credentials: "include",
-        headers,
-      }).catch(() => null);
-
-      let orderNotifs: NotificationItem[] = [];
-      if (orderRes && orderRes.ok) {
-        const orderData = await orderRes.json().catch(() => ({}));
-        const rawOrders: any[] = Array.isArray(orderData.data)
-          ? orderData.data
-          : Array.isArray(orderData.orders)
-            ? orderData.orders
-            : Array.isArray(orderData)
-              ? orderData
-              : [];
-
-        orderNotifs = rawOrders.slice(0, 15).map((item: any, idx: number) => {
-          const u = typeof item.userId === "object" && item.userId ? item.userId : typeof item.user === "object" && item.user ? item.user : {};
-          const uName = u.name || item.customer_name || item.customer || "Unknown User";
-          const uMobile = u.mobile || u.phone || item.customer_phone || item.mobile || "Unknown Mobile";
-          const displayId = item.orderId || item.order_id || (item._id ? `#SV${item._id.slice(-5).toUpperCase()}` : `#ORD-${1000 + idx}`);
-          const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
-          const codAmt = og.cod_amount ?? item.cod_amount ?? 0;
-          const finalAmt = item.original_finalAmount ?? item.originalFinalAmount ?? item.original_final_amount ?? og.original_finalAmount ?? og.originalFinalAmount ?? og.original_final_amount ?? og.finalAmount ?? item.finalAmount ?? item.totalAmount ?? item.amount ?? 0;
-          const orderDate = new Date(item.createdAt || item.date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-          return {
-            id: `order-notif-${item._id || item.id || idx}`,
-            title: `New Order: ${displayId}`,
-            description: `Customer: ${uName} (${uMobile}) | COD: ₹${codAmt} | Amount: ₹${finalAmt}`,
-            time: orderDate,
-            isRead: false,
-          };
-        });
-      }
-
-      // Merge order notifications with system notifications
-      setNotifications([...orderNotifs, ...systemNotifs]);
+      setNotifications(systemNotifs);
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
     }

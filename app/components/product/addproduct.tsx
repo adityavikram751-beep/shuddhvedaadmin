@@ -86,7 +86,7 @@ function AddProductForm() {
   const [galleryImages, setGalleryImages] = useState<File[]>([]);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
-  const [removedGalleryImageIds, setRemovedGalleryImageIds] = useState<string[]>([]);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [videoName, setVideoName] = useState("");
@@ -302,8 +302,47 @@ function AddProductForm() {
     if (!validateStep1()) return;
 
     if (isEditMode && productId) {
-      showToast("Product loaded. Update media and variants.");
-      setCurrentStep(2);
+      setLoading(true);
+      try {
+        const payload: any = {
+          product_name: productName,
+          brand,
+          product_type: productType,
+          floral_source: floralSource,
+          description,
+          key_benefits: keyBenefits,
+          ingredients,
+          manufacturer_information: manufacturerInfo,
+          shelf_life: shelfLife,
+          storage_instructions: storageInstructions,
+          country_of_origin: countryOfOrigin,
+          fssai_license_number: fssaiLicense,
+          batch_number: batchNumber,
+        };
+        if (categoryId) {
+          payload.categoryId = categoryId;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/api/products/update/product-information/${productId}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Failed to update product info (${res.status})`);
+        }
+
+        showToast("Product information updated successfully");
+        setCurrentStep(2);
+      } catch (err: any) {
+        console.error("Update product error:", err);
+        showToast(err.message || "Error updating product information");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -411,19 +450,23 @@ function AddProductForm() {
         setThumbnail(null);
       }
 
-      // 2. Upload new gallery images. In edit mode, replace removed slots first.
+      // 2. Upload new gallery images
       const newGalleryItems = galleryItems.filter((item) => item.file);
       const fallbackGalleryFiles = galleryItems.length ? [] : galleryImages;
       const galleryFiles = newGalleryItems.length
         ? newGalleryItems.map((item) => item.file as File)
         : fallbackGalleryFiles;
 
-      const replaceQueue = [...removedGalleryImageIds];
       for (const file of galleryFiles) {
-        const replaceImageId = replaceQueue.shift();
-        await uploadImage(file, "gallery", replaceImageId);
+        const data = await uploadImage(file, "gallery");
+        const savedImage = data?.data || data?.image || data;
+        const nextId = getId(savedImage);
+        const idx = galleryItems.findIndex((it) => it.file === file);
+        if (idx !== -1 && nextId) {
+          galleryItems[idx].id = nextId;
+          delete galleryItems[idx].file;
+        }
       }
-      setRemovedGalleryImageIds([]);
       setGalleryImages([]);
       setGalleryItems((prev) => prev.map((item) => ({ id: item.id, preview: item.preview })));
 
@@ -596,6 +639,68 @@ function AddProductForm() {
   const editVariant = (index: number) => {
     setNewVariant(variants[index]);
     setEditingIndex(index);
+  };
+
+  const handleDeleteThumbnail = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (thumbnailImageId && productId) {
+      if (!confirm("Are you sure you want to delete the main product image?")) return;
+      setDeletingImageId(thumbnailImageId);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/products/${productId}/images/${thumbnailImageId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Failed to delete image (${res.status})`);
+        }
+        showToast("Main image deleted successfully");
+      } catch (err: any) {
+        console.error("Delete thumbnail error:", err);
+        showToast(err.message || "Error deleting main image");
+        return;
+      } finally {
+        setDeletingImageId(null);
+      }
+    }
+    setThumbnail(null);
+    setThumbnailPreview(null);
+    setThumbnailImageId(null);
+  };
+
+  const handleDeleteGalleryImage = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const item = galleryItems[idx];
+    if (!item) return;
+
+    if (item.id && productId) {
+      if (!confirm("Are you sure you want to delete this gallery image?")) return;
+      setDeletingImageId(item.id);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/products/${productId}/images/${item.id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Failed to delete image (${res.status})`);
+        }
+        showToast("Gallery image deleted successfully");
+      } catch (err: any) {
+        console.error("Delete gallery image error:", err);
+        showToast(err.message || "Error deleting image");
+        return;
+      } finally {
+        setDeletingImageId(null);
+      }
+    }
+
+    setGalleryItems((prev) => prev.filter((_, i) => i !== idx));
+    setGalleryPreviews((prev) => prev.filter((_, i) => i !== idx));
+    if (item.file) {
+      setGalleryImages((prev) => prev.filter((file) => file !== item.file));
+    }
   };
 
   const deleteVideo = async () => {
@@ -902,10 +1007,12 @@ function AddProductForm() {
                   <div className="relative inline-block">
                     <img src={thumbnailPreview} alt="Thumb" className="max-h-36 rounded-xl shadow-sm" />
                     <button
-                      onClick={(e) => { e.stopPropagation(); setThumbnail(null); setThumbnailPreview(null); }}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
+                      type="button"
+                      disabled={deletingImageId === thumbnailImageId}
+                      onClick={handleDeleteThumbnail}
+                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md disabled:opacity-50 cursor-pointer"
                     >
-                      <X size={12} />
+                      {deletingImageId === thumbnailImageId ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
                     </button>
                   </div>
                 ) : (
@@ -935,25 +1042,23 @@ function AddProductForm() {
                   <Plus size={18} className="text-[#D97706] mb-1" />
                   <span className="text-[11px] font-bold text-[#D97706]">Add Image</span>
                 </div>
-                {galleryPreviews.map((src, idx) => (
-                  <div key={idx} className="relative w-36 h-24 rounded-2xl overflow-hidden border border-slate-200 group">
-                    <img src={src} alt="" className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => {
-                        const removedItem = galleryItems[idx];
-                        if (removedItem?.id) {
-                          setRemovedGalleryImageIds((prev) => [...prev, removedItem.id as string]);
-                        }
-                        setGalleryItems((prev) => prev.filter((_, i) => i !== idx));
-                        setGalleryPreviews(galleryPreviews.filter((_, i) => i !== idx));
-                        setGalleryImages((prev) => removedItem?.file ? prev.filter((file) => file !== removedItem.file) : prev);
-                      }}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
+                {galleryPreviews.map((src, idx) => {
+                  const item = galleryItems[idx];
+                  const isDeleting = item?.id && deletingImageId === item.id;
+                  return (
+                    <div key={idx} className="relative w-36 h-24 rounded-2xl overflow-hidden border border-slate-200 group">
+                      <img src={src} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        disabled={Boolean(isDeleting)}
+                        onClick={(e) => handleDeleteGalleryImage(idx, e)}
+                        className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow disabled:opacity-50 cursor-pointer"
+                      >
+                        {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
               <input type="file" ref={galleryInputRef} accept="image/*" multiple onChange={(e) => {
                 const files = e.target.files;
