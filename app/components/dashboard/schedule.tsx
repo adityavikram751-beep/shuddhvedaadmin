@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/auth";
 import {
   Plus,
   ShoppingBag,
@@ -10,6 +11,7 @@ import {
   Monitor,
   Settings,
   ChevronDown,
+  Calendar,
 } from "lucide-react";
 import {
   LineChart,
@@ -69,7 +71,7 @@ export function QuickActions() {
 
 /* ---------------- Orders Overview ---------------- */
 
-const orderData = [
+const defaultOrderData = [
   { date: "May 31", label: "May 31, 2025", orders: 14 },
   { date: "Jun 1", label: "Jun 1, 2025", orders: 17 },
   { date: "Jun 2", label: "Jun 2, 2025", orders: 11 },
@@ -78,6 +80,92 @@ const orderData = [
   { date: "Jun 5", label: "Jun 5, 2025", orders: 25 },
   { date: "Jun 6", label: "Jun 6, 2025", orders: 17 },
 ];
+
+interface OrderChartPoint {
+  date: string;
+  label: string;
+  orders: number;
+}
+
+function parseOrderPerWeekData(data: any): OrderChartPoint[] {
+  if (!data) return [];
+
+  let list: any[] = [];
+  if (Array.isArray(data?.data?.dailyOrders)) {
+    list = data.data.dailyOrders;
+  } else if (Array.isArray(data?.dailyOrders)) {
+    list = data.dailyOrders;
+  } else if (Array.isArray(data)) {
+    list = data;
+  } else if (Array.isArray(data?.data)) {
+    list = data.data;
+  } else if (Array.isArray(data?.orders)) {
+    list = data.orders;
+  } else if (Array.isArray(data?.orderPerWeek)) {
+    list = data.orderPerWeek;
+  } else if (Array.isArray(data?.ordersPerWeek)) {
+    list = data.ordersPerWeek;
+  } else if (Array.isArray(data?.result)) {
+    list = data.result;
+  } else if (data?.data && typeof data.data === "object") {
+    list = Object.entries(data.data)
+      .filter(([k]) => !["selectedDate", "period", "totalOrders", "dailyOrders"].includes(k))
+      .map(([key, val]) => ({ date: key, count: val }));
+  }
+
+  if (!list.length) return [];
+
+  return list.map((item: any, idx: number) => {
+    const rawDate =
+      item.date ||
+      item.day ||
+      item._id ||
+      item.week ||
+      item.label ||
+      item.createdAt ||
+      item.created_at ||
+      `Day ${idx + 1}`;
+
+    const rawCount =
+      item.orders !== undefined
+        ? item.orders
+        : item.count !== undefined
+        ? item.count
+        : item.totalOrders !== undefined
+        ? item.totalOrders
+        : item.total !== undefined
+        ? item.total
+        : item.quantity !== undefined
+        ? item.quantity
+        : typeof item === "number"
+        ? item
+        : 0;
+
+    const countNum = Number(rawCount) || 0;
+
+    let displayDate = String(rawDate);
+    let displayLabel = String(rawDate);
+
+    if (typeof rawDate === "string" && rawDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [y, m, d] = rawDate.split("-").map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      displayDate = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      displayLabel = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    } else {
+      const dObj = new Date(rawDate);
+      if (!isNaN(dObj.getTime())) {
+        displayDate = dObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        displayLabel = dObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      }
+    }
+
+    return {
+      date: displayDate,
+      label: displayLabel,
+      orders: countNum,
+    };
+  });
+}
 
 function CustomTooltip({ active, payload }: any) {
   if (active && payload && payload.length) {
@@ -95,25 +183,158 @@ function CustomTooltip({ active, payload }: any) {
   return null;
 }
 
+const getTodayDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export function OrdersOverview() {
-  const [range, setRange] = useState("Last 7 Days");
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateStr());
+  const [chartData, setChartData] = useState<OrderChartPoint[]>(defaultOrderData);
+  const [loading, setLoading] = useState(false);
+  const [totalOrders, setTotalOrders] = useState<number | null>(null);
+  const [periodInfo, setPeriodInfo] = useState<{ startDate?: string; endDate?: string } | null>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDateClick = () => {
+    if (dateInputRef.current) {
+      if (typeof dateInputRef.current.showPicker === "function") {
+        try {
+          dateInputRef.current.showPicker();
+        } catch {
+          dateInputRef.current.focus();
+        }
+      } else {
+        dateInputRef.current.focus();
+      }
+    }
+  };
+
+  const fetchOrdersOverview = async (dateParam: string) => {
+    setLoading(true);
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("sudhveda_token") ||
+            localStorage.getItem("admin_token") ||
+            localStorage.getItem("token")
+          : null;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const url = `${API_BASE_URL}/api/admin/order-dashboard/order-per-week?date=${encodeURIComponent(dateParam)}`;
+
+      const res = await fetch(url, {
+        credentials: "include",
+        headers,
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const parsed = parseOrderPerWeekData(json);
+        if (parsed && parsed.length > 0) {
+          setChartData(parsed);
+        }
+        if (typeof json?.data?.totalOrders === "number") {
+          setTotalOrders(json.data.totalOrders);
+        } else if (typeof json?.totalOrders === "number") {
+          setTotalOrders(json.totalOrders);
+        }
+        if (json?.data?.period) {
+          setPeriodInfo(json.data.period);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch order per week data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrdersOverview(selectedDate);
+  }, [selectedDate]);
+
+  const maxOrders = Math.max(...chartData.map((d) => d.orders), 10);
+  const yMax = Math.ceil((maxOrders + 5) / 10) * 10;
+  const yTicks = [
+    Math.round(yMax * 0.25),
+    Math.round(yMax * 0.5),
+    Math.round(yMax * 0.75),
+    yMax,
+  ];
+
+  const getFormattedDisplayDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const [y, m, d] = parts;
+      return `${m}/${d}/${y}`;
+    }
+    return dateStr;
+  };
 
   return (
-    <div className=" mt-8 rounded-[22px] bg-white border border-[#F1F1F1] shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-7 py-6 h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-[20px] font-bold text-[#1F1B2D]">
-          Orders Overview
-        </h2>
-        <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 font-medium">
-          {range}
-          <ChevronDown size={16} className="text-gray-400" />
-        </button>
+    <div className=" mt-8 rounded-[22px] bg-white border border-[#F1F1F1] shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-7 py-6 h-full relative">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-[20px] font-bold text-[#1F1B2D]">
+            Orders Overview
+          </h2>
+          {periodInfo?.startDate && periodInfo?.endDate && (
+            <p className="text-xs text-gray-400 font-medium mt-0.5">
+              Period: {periodInfo.startDate} to {periodInfo.endDate}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {totalOrders !== null && (
+            <span className="text-xs font-semibold px-2.5 py-1 bg-orange-50 text-[#FF7A00] rounded-lg border border-orange-100">
+              Total: {totalOrders}
+            </span>
+          )}
+          <div
+            onClick={handleDateClick}
+            className="relative group flex items-center gap-2 px-3.5 py-1.5 rounded-[12px] border border-gray-200 bg-white text-sm font-medium text-gray-700 shadow-sm hover:border-[#FF7A00] hover:bg-orange-50/20 transition-all cursor-pointer"
+          >
+            <Calendar size={15} className="text-gray-400 group-hover:text-[#FF7A00] transition-colors" />
+            <span className="tracking-wide text-gray-800">{getFormattedDisplayDate(selectedDate)}</span>
+            <ChevronDown size={15} className="text-gray-400 group-hover:text-gray-600 transition-colors ml-0.5" />
+
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                if (e.target.value) setSelectedDate(e.target.value);
+              }}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="h-[260px]">
+      <div className="h-[260px] relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white shadow-md rounded-full text-xs font-semibold text-[#FF7A00] border border-orange-100">
+              <span className="w-2 h-2 rounded-full bg-[#FF7A00] animate-ping" />
+              Loading chart...
+            </div>
+          </div>
+        )}
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={orderData}
+            data={chartData}
             margin={{ top: 30, right: 10, left: -10, bottom: 0 }}
           >
             <defs>
@@ -133,8 +354,8 @@ export function OrdersOverview() {
             <YAxis
               axisLine={false}
               tickLine={false}
-              domain={[0, 40]}
-              ticks={[10, 20, 30, 40]}
+              domain={[0, yMax]}
+              ticks={yTicks}
               tick={{ fill: "#B0B4BC", fontSize: 12 }}
             />
             <Tooltip content={<CustomTooltip />} />
