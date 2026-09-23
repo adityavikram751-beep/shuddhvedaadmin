@@ -15,6 +15,9 @@ import {
   Video,
   Loader2,
   Send,
+  Globe,
+  Search,
+  Check,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -44,6 +47,295 @@ interface GalleryItem {
   id?: string;
   preview: string;
   file?: File;
+}
+
+// ---------- Country List & Component ----------
+const ALL_COUNTRIES = [
+  "India",
+  "United States",
+  "United Kingdom",
+  "United Arab Emirates",
+  "Australia",
+  "Canada",
+  "Germany",
+  "France",
+  "Japan",
+  "Saudi Arabia",
+  "Singapore",
+  "China",
+  "Afghanistan",
+  "Albania",
+  "Algeria",
+  "Andorra",
+  "Angola",
+  "Antigua and Barbuda",
+  "Argentina",
+  "Armenia",
+  "Austria",
+  "Azerbaijan",
+  "Bahamas",
+  "Bahrain",
+  "Bangladesh",
+  "Barbados",
+  "Belarus",
+  "Belgium",
+  "Belize",
+  "Benin",
+  "Bhutan",
+  "Bolivia",
+  "Bosnia and Herzegovina",
+  "Botswana",
+  "Brazil",
+  "Brunei",
+  "Bulgaria",
+  "Burkina Faso",
+  "Burundi",
+  "Cambodia",
+  "Cameroon",
+  "Cape Verde",
+  "Central African Republic",
+  "Chad",
+  "Chile",
+  "Colombia",
+  "Comoros",
+  "Congo",
+  "Costa Rica",
+  "Croatia",
+  "Cuba",
+  "Cyprus",
+  "Czech Republic",
+  "Denmark",
+  "Djibouti",
+  "Dominica",
+  "Dominican Republic",
+  "East Timor",
+  "Ecuador",
+  "Egypt",
+  "El Salvador",
+  "Equatorial Guinea",
+  "Eritrea",
+  "Estonia",
+  "Eswatini",
+  "Ethiopia",
+  "Fiji",
+  "Finland",
+  "Gabon",
+  "Gambia",
+  "Georgia",
+  "Ghana",
+  "Greece",
+  "Grenada",
+  "Guatemala",
+  "Guinea",
+  "Guinea-Bissau",
+  "Guyana",
+  "Haiti",
+  "Honduras",
+  "Hungary",
+  "Iceland",
+  "Indonesia",
+  "Iran",
+  "Iraq",
+  "Ireland",
+  "Israel",
+  "Italy",
+  "Ivory Coast",
+  "Jamaica",
+  "Jordan",
+  "Kazakhstan",
+  "Kenya",
+  "Kiribati",
+  "Kuwait",
+  "Kyrgyzstan",
+  "Laos",
+  "Latvia",
+  "Lebanon",
+  "Lesotho",
+  "Liberia",
+  "Libya",
+  "Liechtenstein",
+  "Lithuania",
+  "Luxembourg",
+  "Madagascar",
+  "Malawi",
+  "Malaysia",
+  "Maldives",
+  "Mali",
+  "Malta",
+  "Marshall Islands",
+  "Mauritania",
+  "Mauritius",
+  "Mexico",
+  "Micronesia",
+  "Moldova",
+  "Monaco",
+  "Mongolia",
+  "Montenegro",
+  "Morocco",
+  "Mozambique",
+  "Myanmar",
+  "Namibia",
+  "Nauru",
+  "Nepal",
+  "Netherlands",
+  "New Zealand",
+  "Nicaragua",
+  "Niger",
+  "Nigeria",
+  "North Korea",
+  "North Macedonia",
+  "Norway",
+  "Oman",
+  "Pakistan",
+  "Palau",
+  "Palestine",
+  "Panama",
+  "Papua New Guinea",
+  "Paraguay",
+  "Peru",
+  "Philippines",
+  "Poland",
+  "Portugal",
+  "Qatar",
+  "Romania",
+  "Russia",
+  "Rwanda",
+  "Saint Kitts and Nevis",
+  "Saint Lucia",
+  "Saint Vincent and the Grenadines",
+  "Samoa",
+  "San Marino",
+  "Sao Tome and Principe",
+  "Senegal",
+  "Serbia",
+  "Seychelles",
+  "Sierra Leone",
+  "Slovakia",
+  "Slovenia",
+  "Solomon Islands",
+  "Somalia",
+  "South Africa",
+  "South Korea",
+  "South Sudan",
+  "Spain",
+  "Sri Lanka",
+  "Sudan",
+  "Suriname",
+  "Sweden",
+  "Switzerland",
+  "Syria",
+  "Taiwan",
+  "Tajikistan",
+  "Tanzania",
+  "Thailand",
+  "Togo",
+  "Tonga",
+  "Trinidad and Tobago",
+  "Tunisia",
+  "Turkey",
+  "Turkmenistan",
+  "Tuvalu",
+  "Uganda",
+  "Ukraine",
+  "Uruguay",
+  "Uzbekistan",
+  "Vanuatu",
+  "Vatican City",
+  "Venezuela",
+  "Vietnam",
+  "Yemen",
+  "Zambia",
+  "Zimbabwe",
+];
+
+function CountryDropdown({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredCountries = ALL_COUNTRIES.filter((c) =>
+    c.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706] flex items-center justify-between transition-all hover:border-slate-300"
+      >
+        <span className="flex items-center gap-2 text-slate-800">
+          <Globe className="w-3.5 h-3.5 text-[#D97706]" />
+          {value || "Select Country"}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="p-2 border-b border-slate-100 bg-slate-50/80">
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 absolute left-3 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search country..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white rounded-lg border border-slate-200 focus:outline-none focus:border-[#D97706] font-medium"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1 text-xs">
+            {filteredCountries.length === 0 ? (
+              <div className="px-3 py-3 text-center text-slate-400 font-medium">
+                No country found
+              </div>
+            ) : (
+              filteredCountries.map((c) => {
+                const isSelected = c === value;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => {
+                      onChange(c);
+                      setIsOpen(false);
+                      setSearch("");
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between font-medium transition-colors ${
+                      isSelected
+                        ? "bg-[#FFFBEB] text-[#D97706] font-semibold"
+                        : "hover:bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    <span>{c}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-[#D97706]" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------- Main Component ----------
@@ -926,13 +1218,10 @@ function AddProductForm() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1.5">COUNTRY OF ORIGIN</label>
-                  <select
+                  <CountryDropdown
                     value={countryOfOrigin}
-                    onChange={(e) => setCountryOfOrigin(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
-                  >
-                    <option value="India">India</option>
-                  </select>
+                    onChange={setCountryOfOrigin}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
