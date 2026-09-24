@@ -319,11 +319,10 @@ function CountryDropdown({
                       setIsOpen(false);
                       setSearch("");
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between font-medium transition-colors ${
-                      isSelected
+                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between font-medium transition-colors ${isSelected
                         ? "bg-[#FFFBEB] text-[#D97706] font-semibold"
                         : "hover:bg-slate-100 text-slate-700"
-                    }`}
+                      }`}
                   >
                     <span>{c}</span>
                     {isSelected && <Check className="w-3.5 h-3.5 text-[#D97706]" />}
@@ -337,6 +336,19 @@ function CountryDropdown({
     </div>
   );
 }
+
+const NUTRIENT_KEYS = [
+  { key: "energy", label: "Energy" },
+  { key: "total_fat", label: "Total Fat" },
+  { key: "saturated_fat", label: "Saturated Fat" },
+  { key: "trans_fat", label: "Trans Fat" },
+  { key: "cholesterol", label: "Cholesterol" },
+  { key: "carbohydrates", label: "Carbohydrates" },
+  { key: "natural_sugar", label: "Natural Sugar" },
+  { key: "added_sugar", label: "Added Sugar" },
+  { key: "protein", label: "Protein" },
+  { key: "sodium", label: "Sodium" },
+];
 
 // ---------- Main Component ----------
 function AddProductForm() {
@@ -363,13 +375,63 @@ function AddProductForm() {
   const [floralSource, setFloralSource] = useState("");
   const [description, setDescription] = useState("");
   const [keyBenefits, setKeyBenefits] = useState("");
-  const [ingredients, setIngredients] = useState("");
   const [manufacturerInfo, setManufacturerInfo] = useState("");
   const [shelfLife, setShelfLife] = useState("");
   const [storageInstructions, setStorageInstructions] = useState("");
   const [countryOfOrigin, setCountryOfOrigin] = useState("India");
   const [fssaiLicense, setFssaiLicense] = useState("");
   const [batchNumber, setBatchNumber] = useState("");
+
+  // ---------- Nutrition Info State ----------
+  const [servingSize, setServingSize] = useState<{ quantity: any; unit: string; weight_g: any }>({
+    quantity: 1,
+    unit: "tbsp",
+    weight_g: 21,
+  });
+
+  const [nutrients, setNutrients] = useState<Record<string, { unit: string; per_100g: any; per_serving: any; rda_percent: any }>>({
+    energy: { unit: "kcal", per_100g: 336, per_serving: 70.56, rda_percent: 3.5 },
+    total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    saturated_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    trans_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    cholesterol: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: "" },
+    carbohydrates: { unit: "g", per_100g: 84, per_serving: 17.64, rda_percent: "" },
+    natural_sugar: { unit: "g", per_100g: 84, per_serving: 17.64, rda_percent: "" },
+    added_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    protein: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" },
+    sodium: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: 0 },
+  });
+
+  const buildNutritionInfoPayload = () => {
+    const serving_size = {
+      quantity: Number(servingSize.quantity) || 1,
+      unit: String(servingSize.unit || "tbsp"),
+      weight_g: Number(servingSize.weight_g) || 21,
+    };
+
+    const nutrientsFormatted: Record<string, any> = {};
+    Object.entries(nutrients).forEach(([key, val]) => {
+      const rawRda = val.rda_percent;
+      const isNullRda =
+        rawRda === "" ||
+        rawRda === null ||
+        rawRda === undefined ||
+        rawRda === "null" ||
+        isNaN(Number(rawRda));
+
+      nutrientsFormatted[key] = {
+        unit: String(val.unit || ""),
+        per_100g: val.per_100g === "" || val.per_100g === null ? 0 : Number(val.per_100g),
+        per_serving: val.per_serving === "" || val.per_serving === null ? 0 : Number(val.per_serving),
+        rda_percent: isNullRda ? null : Number(rawRda),
+      };
+    });
+
+    return {
+      serving_size,
+      nutrients: nutrientsFormatted,
+    };
+  };
 
   // ---------- Step 2: Media ----------
   const [thumbnail, setThumbnail] = useState<File | null>(null);
@@ -498,13 +560,46 @@ function AddProductForm() {
         setFloralSource(p.floral_source || "");
         setDescription(p.description || "");
         setKeyBenefits(p.key_benefits || "");
-        setIngredients(p.ingredients || "");
         setManufacturerInfo(p.manufacturer_information || "");
         setShelfLife(p.shelf_life || "");
         setStorageInstructions(p.storage_instructions || "");
         setCountryOfOrigin(p.country_of_origin || "India");
         setFssaiLicense(p.fssai_license_number || "");
         setBatchNumber(p.batch_number || "");
+
+        // --- Nutrition Info ---
+        const rawNutrition = p.nutrition_info || p.nutritionInfo;
+        if (rawNutrition) {
+          try {
+            const info = typeof rawNutrition === "string" ? JSON.parse(rawNutrition) : rawNutrition;
+            if (info.serving_size) {
+              setServingSize({
+                quantity: info.serving_size.quantity ?? 1,
+                unit: info.serving_size.unit ?? "tbsp",
+                weight_g: info.serving_size.weight_g ?? 21,
+              });
+            }
+            if (info.nutrients) {
+              setNutrients((prev) => {
+                const updated = { ...prev };
+                Object.keys(info.nutrients).forEach((k) => {
+                  const item = info.nutrients[k];
+                  if (item) {
+                    updated[k] = {
+                      unit: item.unit ?? prev[k]?.unit ?? "",
+                      per_100g: item.per_100g ?? 0,
+                      per_serving: item.per_serving ?? 0,
+                      rda_percent: item.rda_percent ?? "",
+                    };
+                  }
+                });
+                return updated;
+              });
+            }
+          } catch (e) {
+            console.error("Error parsing nutrition_info:", e);
+          }
+        }
 
         // --- Images ---
         const images = extractList(p, ["imageDocumentId", "images", "image"]);
@@ -603,13 +698,13 @@ function AddProductForm() {
           floral_source: floralSource,
           description,
           key_benefits: keyBenefits,
-          ingredients,
           manufacturer_information: manufacturerInfo,
           shelf_life: shelfLife,
           storage_instructions: storageInstructions,
           country_of_origin: countryOfOrigin,
           fssai_license_number: fssaiLicense,
           batch_number: batchNumber,
+          nutrition_info: buildNutritionInfoPayload(),
         };
         if (categoryId) {
           payload.categoryId = categoryId;
@@ -647,7 +742,6 @@ function AddProductForm() {
         floral_source: floralSource,
         description,
         key_benefits: keyBenefits,
-        ingredients,
         manufacturer_information: manufacturerInfo,
         shelf_life: shelfLife,
         storage_instructions: storageInstructions,
@@ -655,6 +749,7 @@ function AddProductForm() {
         fssai_license_number: fssaiLicense,
         batch_number: batchNumber,
         categoryId,
+        nutrition_info: buildNutritionInfoPayload(),
       };
 
       const res = await fetch(`${API_BASE_URL}/api/products`, {
@@ -1162,16 +1257,7 @@ function AddProductForm() {
             <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-5">
               <h2 className="text-sm font-bold text-[#0F172A]">Honey Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1.5">INGREDIENTS</label>
-                  <textarea
-                    rows={3}
-                    value={ingredients}
-                    onChange={(e) => setIngredients(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#D97706]"
-                    placeholder="Enter ingredients"
-                  />
-                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1.5">KEY BENEFITS</label>
                   <textarea
@@ -1245,6 +1331,132 @@ function AddProductForm() {
                     placeholder="Enter batch number"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Nutritional Information */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-5">
+              <div className="border-b border-slate-100 pb-3">
+                <h2 className="text-sm font-bold text-[#0F172A]">Nutritional Information</h2>
+                <p className="text-[11px] text-slate-500 font-medium">Configure serving size and nutrient values (per 100g, per serving & % RDA)</p>
+              </div>
+
+              {/* Serving Size Settings */}
+              <div className="bg-amber-50/50 border border-amber-200/60 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-[#78350F] mb-3">Serving Size Settings</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1">Quantity</label>
+                    <input
+                      type="number"
+                      value={servingSize.quantity}
+                      onChange={(e) => setServingSize({ ...servingSize, quantity: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
+                      placeholder="1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1">Unit</label>
+                    <input
+                      type="text"
+                      value={servingSize.unit}
+                      onChange={(e) => setServingSize({ ...servingSize, unit: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
+                      placeholder="tbsp"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#475569] uppercase mb-1">Weight (g)</label>
+                    <input
+                      type="number"
+                      value={servingSize.weight_g}
+                      onChange={(e) => setServingSize({ ...servingSize, weight_g: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
+                      placeholder="21"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Nutrients Table */}
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[#475569] font-bold text-[11px] uppercase">
+                      <th className="py-2.5 px-3">Nutrient</th>
+                      <th className="py-2.5 px-3">Unit</th>
+                      <th className="py-2.5 px-3">Per 100g</th>
+                      <th className="py-2.5 px-3">Per Serving</th>
+                      <th className="py-2.5 px-3">% RDA (or leave blank for null)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {NUTRIENT_KEYS.map(({ key, label }) => {
+                      const item = nutrients[key] || { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" };
+                      return (
+                        <tr key={key} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-3 font-semibold text-slate-800">{label}</td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              value={item.unit}
+                              onChange={(e) =>
+                                setNutrients({
+                                  ...nutrients,
+                                  [key]: { ...item, unit: e.target.value },
+                                })
+                              }
+                              className="w-20 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="number"
+                              step="any"
+                              value={item.per_100g}
+                              onChange={(e) =>
+                                setNutrients({
+                                  ...nutrients,
+                                  [key]: { ...item, per_100g: e.target.value },
+                                })
+                              }
+                              className="w-24 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="number"
+                              step="any"
+                              value={item.per_serving}
+                              onChange={(e) =>
+                                setNutrients({
+                                  ...nutrients,
+                                  [key]: { ...item, per_serving: e.target.value },
+                                })
+                              }
+                              className="w-24 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="number"
+                              step="any"
+                              value={item.rda_percent ?? ""}
+                              onChange={(e) =>
+                                setNutrients({
+                                  ...nutrients,
+                                  [key]: { ...item, rda_percent: e.target.value },
+                                })
+                              }
+                              placeholder="null"
+                              className="w-24 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
 
