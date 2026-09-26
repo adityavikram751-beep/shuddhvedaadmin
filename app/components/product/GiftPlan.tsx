@@ -91,7 +91,6 @@ export default function GiftPlanManagement() {
   const [stepStatusMsg, setStepStatusMsg] = useState<string | null>(null);
   const [formSuccessMsg, setFormSuccessMsg] = useState<string | null>(null);
   const [formErrorMsg, setFormErrorMsg] = useState<string | null>(null);
-  const [copiedSlug, setCopiedSlug] = useState(false);
 
   // Form Fields
   const [comboName, setComboName] = useState("");
@@ -106,12 +105,8 @@ export default function GiftPlanManagement() {
   ]);
   const [mrp, setMrp] = useState<number | "">(2000);
   const [sellingPrice, setSellingPrice] = useState<number | "">(1699);
-  const [description, setDescription] = useState(
-    "An exquisite collection of four naturally sourced honeys — Mustard, Multiflora, Lychee and Wild Forest Honey, curated to bring a variety of authentic honey flavours to your home."
-  );
-  const [keyBenefits, setKeyBenefits] = useState(
-    "Supports immunity, rich in antioxidants, natural energy booster, supports digestion and offers a variety of natural honey flavours with no added sugar or preservatives."
-  );
+  const [description, setDescription] = useState("");
+  const [keyBenefits, setKeyBenefits] = useState("");
   const [manufacturerInfo, setManufacturerInfo] = useState(
     "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
   );
@@ -151,63 +146,6 @@ export default function GiftPlanManagement() {
   const updateProductsList = (newList: ComboProductItem[]) => {
     setProducts(newList);
     setComboSize(newList.length);
-  };
-
-  // Preset Loaders
-  const loadPresetQuartet = () => {
-    setComboName("Honey Lovers Quartet");
-    setSlug("mustard-multiflora-lychee-forest-honey-lovers-quartet");
-    setBrand("SudhVeda Honey");
-    setComboSize(4);
-    setProducts([
-      { name: "Mustard Honey", weight: 250, unit: "g" },
-      { name: "Multiflora Honey", weight: 250, unit: "g" },
-      { name: "Lychee Honey", weight: 250, unit: "g" },
-      { name: "Wild Forest Honey", weight: 250, unit: "g" },
-    ]);
-    setMrp(2000);
-    setSellingPrice(1699);
-    setDescription(
-      "An exquisite collection of four naturally sourced honeys — Mustard, Multiflora, Lychee and Wild Forest Honey, curated to bring a variety of authentic honey flavours to your home."
-    );
-    setKeyBenefits(
-      "Supports immunity, rich in antioxidants, natural energy booster, supports digestion and offers a variety of natural honey flavours with no added sugar or preservatives."
-    );
-    setManufacturerInfo(
-      "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
-    );
-    setShelfLife("24 months from the date of packaging");
-    setStorageInstructions("Store in a cool, dry place away from direct sunlight. Do not refrigerate.");
-    setCountryOfOrigin("India");
-    setFssaiLicense("10021045001234");
-    setIsActive(true);
-  };
-
-  const loadPresetGoldenDuo = () => {
-    setComboName("Golden Duo");
-    setSlug("mustard-honey-lychee-honey-golden-duo");
-    setBrand("SudhVeda Honey");
-    setComboSize(2);
-    setProducts([
-      { name: "Mustard Honey", weight: 250, unit: "g" },
-      { name: "Lychee Honey", weight: 250, unit: "g" },
-    ]);
-    setMrp(1250);
-    setSellingPrice(1000);
-    setDescription(
-      "A specially curated combo of Mustard Honey and Lychee Honey — 100% pure, unprocessed, and sourced directly from trusted apiaries."
-    );
-    setKeyBenefits(
-      "Boosts immunity, rich in antioxidants, natural energy booster, aids digestion, no added sugar or preservatives"
-    );
-    setManufacturerInfo(
-      "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
-    );
-    setShelfLife("24 months from the date of packaging");
-    setStorageInstructions("Store in a cool, dry place away from direct sunlight. Do not refrigerate.");
-    setCountryOfOrigin("India");
-    setFssaiLicense("10021045001234");
-    setIsActive(true);
   };
 
   // Helper to resolve Image URL safely
@@ -307,7 +245,27 @@ export default function GiftPlanManagement() {
   const resetForm = () => {
     setEditingComboId(null);
     setActiveTab("info");
-    loadPresetQuartet();
+    setComboName("");
+    setSlug("");
+    setBrand("SudhVeda Honey");
+    setComboSize(2);
+    setProducts([
+      { name: "Mustard Honey", weight: 250, unit: "g" },
+      { name: "Lychee Honey", weight: 250, unit: "g" },
+    ]);
+    setMrp("");
+    setSellingPrice("");
+    setDescription("");
+    setKeyBenefits("");
+    setManufacturerInfo(
+      "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
+    );
+    setShelfLife("24 months from the date of packaging");
+    setStorageInstructions("Store in a cool, dry place away from direct sunlight. Do not refrigerate.");
+    setCountryOfOrigin("India");
+    setFssaiLicense("10021045001234");
+    setIsActive(true);
+
     setImageFiles([]);
     setImagePreviews([]);
     setEditingComboImages([]);
@@ -341,8 +299,8 @@ export default function GiftPlanManagement() {
             { name: "Lychee Honey", weight: 250, unit: "g" },
           ]
     );
-    setMrp(targetCombo.mrp || 1250);
-    setSellingPrice(targetCombo.selling_price || 1000);
+    setMrp(targetCombo.mrp || "");
+    setSellingPrice(targetCombo.selling_price || "");
     setDescription(targetCombo.description || "");
     setKeyBenefits(targetCombo.key_benefits || "");
     setManufacturerInfo(
@@ -366,6 +324,48 @@ export default function GiftPlanManagement() {
     setFormSuccessMsg(null);
     setStepStatusMsg(null);
     setIsAddModalOpen(true);
+  };
+
+  // Step Navigation Validation & Handlers
+  const validateStep = (tab: "info" | "products" | "pricing" | "images"): boolean => {
+    if (tab === "info") {
+      if (!comboName.trim()) {
+        setFormErrorMsg("Please enter a Combo Product Name before proceeding.");
+        return false;
+      }
+    } else if (tab === "products") {
+      if (products.length === 0) {
+        setFormErrorMsg("Please add at least one product item in the combo.");
+        return false;
+      }
+      for (let i = 0; i < products.length; i++) {
+        if (!products[i].name.trim()) {
+          setFormErrorMsg(`Please enter a name for product #${i + 1}.`);
+          return false;
+        }
+      }
+    } else if (tab === "pricing") {
+      if (!sellingPrice || Number(sellingPrice) <= 0) {
+        setFormErrorMsg("Please enter a valid Selling Price.");
+        return false;
+      }
+    }
+    setFormErrorMsg(null);
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(activeTab)) return;
+    if (activeTab === "info") setActiveTab("products");
+    else if (activeTab === "products") setActiveTab("pricing");
+    else if (activeTab === "pricing") setActiveTab("images");
+  };
+
+  const handlePrevStep = () => {
+    setFormErrorMsg(null);
+    if (activeTab === "images") setActiveTab("pricing");
+    else if (activeTab === "pricing") setActiveTab("products");
+    else if (activeTab === "products") setActiveTab("info");
   };
 
   // Submit Handler for Create & Patch Info
@@ -415,7 +415,7 @@ export default function GiftPlanManagement() {
     try {
       if (editingComboId) {
         // 🌐 PATCH /api/combo/products/update/combo-product/info/{{comboProductId}}
-        setStepStatusMsg("Updating combo info (PATCH)...");
+        setStepStatusMsg("Updating combo info...");
         const res = await fetch(
           `${API_BASE_URL}/api/combo/products/update/combo-product/info/${editingComboId}`,
           {
@@ -435,7 +435,7 @@ export default function GiftPlanManagement() {
         }
       } else {
         // 🌐 POST /api/combo/products/create
-        setStepStatusMsg("Creating combo product (POST)...");
+        setStepStatusMsg("Creating combo product...");
         const res = await fetch(`${API_BASE_URL}/api/combo/products/create`, {
           method: "POST",
           headers: {
@@ -491,7 +491,7 @@ export default function GiftPlanManagement() {
 
       setFormSuccessMsg(
         editingComboId
-          ? "Combo Product info updated successfully!"
+          ? "Combo Product updated successfully!"
           : "Combo Product created successfully!"
       );
 
@@ -509,7 +509,7 @@ export default function GiftPlanManagement() {
     }
   };
 
-  // 🗑️ DELETE Image API (DELETE /api/combo/products/remove/combo-product/{{comboProductId}}/image/{{imageId}})
+  // 🗑️ DELETE Image API
   const handleDeleteComboImage = async (comboProductId: string, imageId: string) => {
     if (!confirm("Are you sure you want to remove this image?")) return;
     try {
@@ -561,14 +561,9 @@ export default function GiftPlanManagement() {
             <Gift size={24} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-[#2D2118]">Combo Gift Plans</h1>
-              <span className="px-2.5 py-0.5 bg-amber-100 text-[#E69A00] font-bold text-[10px] rounded-full uppercase tracking-wider">
-                API Standardized
-              </span>
-            </div>
+            <h1 className="text-xl font-bold text-[#2D2118]">Combo Gift Plans</h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              Manage gift sets, honey combos, pricing & details via REST API endpoints
+              Manage gift sets, honey combos, pricing & details
             </p>
           </div>
         </div>
@@ -658,9 +653,9 @@ export default function GiftPlanManagement() {
         </div>
       )}
 
-      {/* Search & Preset Toolbar */}
-      <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-96">
+      {/* Search Toolbar */}
+      <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-2xs">
+        <div className="relative w-full">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
@@ -670,32 +665,6 @@ export default function GiftPlanManagement() {
             className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] focus:bg-white transition"
           />
         </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
-          <span className="text-[11px] font-bold text-gray-400 uppercase shrink-0">Quick Actions:</span>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              loadPresetQuartet();
-              setIsAddModalOpen(true);
-            }}
-            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-[#E69A00] font-bold text-[11px] rounded-xl border border-amber-200 transition shrink-0 cursor-pointer flex items-center gap-1"
-          >
-            <Sparkles size={13} /> Preset: Quartet (4-Pack)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              loadPresetGoldenDuo();
-              setIsAddModalOpen(true);
-            }}
-            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-[#E69A00] font-bold text-[11px] rounded-xl border border-amber-200 transition shrink-0 cursor-pointer flex items-center gap-1"
-          >
-            <Sparkles size={13} /> Preset: Golden Duo (2-Pack)
-          </button>
-        </div>
       </div>
 
       {/* 🎁 Combo Products Cards Grid */}
@@ -704,7 +673,7 @@ export default function GiftPlanManagement() {
           <div className="bg-white rounded-3xl p-16 border border-gray-100 text-center flex flex-col items-center justify-center gap-3">
             <Loader2 className="animate-spin text-[#E69A00]" size={36} />
             <p className="text-xs font-semibold text-gray-600">
-              Fetching combo products from backend...
+              Fetching combo products...
             </p>
           </div>
         ) : filteredCombos.length === 0 ? (
@@ -893,12 +862,12 @@ export default function GiftPlanManagement() {
                 </span>
                 <div>
                   <h2 className="text-base font-bold text-[#2D2118]">
-                    {editingComboId ? "Edit Combo Product (PATCH Info)" : "Create Combo Product (POST API)"}
+                    {editingComboId ? "Edit Combo Product" : "Create Combo Product"}
                   </h2>
-                  <p className="text-[11px] text-gray-500 font-mono">
+                  <p className="text-[11px] text-gray-500">
                     {editingComboId
-                      ? `PATCH /api/combo/products/update/combo-product/info/${editingComboId}`
-                      : "POST /api/combo/products/create"}
+                      ? "Update combo information, honeys list, pricing and images"
+                      : "Configure combo details, included honeys, pricing, and images"}
                   </p>
                 </div>
               </div>
@@ -912,78 +881,45 @@ export default function GiftPlanManagement() {
               </button>
             </div>
 
-            {/* Presets Row */}
-            <div className="bg-amber-50/60 px-5 py-2 border-b border-amber-100 flex items-center justify-between text-xs shrink-0">
-              <span className="font-bold text-amber-900 text-[11px] flex items-center gap-1">
-                <Sparkles size={13} className="text-[#E69A00]" /> Quick Payload Presets:
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={loadPresetQuartet}
-                  className="px-2.5 py-1 bg-white hover:bg-amber-100 text-[#E69A00] font-bold text-[11px] rounded-lg border border-amber-300 transition cursor-pointer"
-                >
-                  Honey Lovers Quartet (4-Pack)
-                </button>
-                <button
-                  type="button"
-                  onClick={loadPresetGoldenDuo}
-                  className="px-2.5 py-1 bg-white hover:bg-amber-100 text-[#E69A00] font-bold text-[11px] rounded-lg border border-amber-300 transition cursor-pointer"
-                >
-                  Golden Duo (2-Pack)
-                </button>
-              </div>
-            </div>
+            {/* Step Progress Navigation Bar */}
+            <div className="bg-gray-50/90 px-5 py-2.5 border-b border-gray-200 flex items-center justify-between gap-2 text-xs font-bold shrink-0 overflow-x-auto">
+              {(
+                [
+                  { id: "info", label: "1. Basic Info" },
+                  { id: "products", label: `2. Included Products (${products.length})` },
+                  { id: "pricing", label: "3. Pricing & Specs" },
+                  { id: "images", label: `4. Images (${editingComboImages.length + imageFiles.length})` },
+                ] as const
+              ).map((tab, idx) => {
+                const isActive = activeTab === tab.id;
+                const tabOrder = ["info", "products", "pricing", "images"];
+                const isPassed = tabOrder.indexOf(activeTab) > idx;
 
-            {/* Navigation Tabs */}
-            <div className="bg-gray-50 px-6 py-2 border-b border-gray-200 flex items-center gap-4 text-xs font-bold shrink-0 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setActiveTab("info")}
-                className={`py-1.5 px-3 rounded-lg cursor-pointer transition ${
-                  activeTab === "info"
-                    ? "bg-[#E69A00] text-white shadow-2xs"
-                    : "text-gray-600 hover:bg-gray-200/70"
-                }`}
-              >
-                1. Basic Info
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("products")}
-                className={`py-1.5 px-3 rounded-lg cursor-pointer transition flex items-center gap-1 ${
-                  activeTab === "products"
-                    ? "bg-[#E69A00] text-white shadow-2xs"
-                    : "text-gray-600 hover:bg-gray-200/70"
-                }`}
-              >
-                2. Included Products ({products.length})
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("pricing")}
-                className={`py-1.5 px-3 rounded-lg cursor-pointer transition ${
-                  activeTab === "pricing"
-                    ? "bg-[#E69A00] text-white shadow-2xs"
-                    : "text-gray-600 hover:bg-gray-200/70"
-                }`}
-              >
-                3. Pricing & Specs
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("images")}
-                className={`py-1.5 px-3 rounded-lg cursor-pointer transition ${
-                  activeTab === "images"
-                    ? "bg-[#E69A00] text-white shadow-2xs"
-                    : "text-gray-600 hover:bg-gray-200/70"
-                }`}
-              >
-                4. Images ({editingComboImages.length + imageFiles.length})
-              </button>
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setFormErrorMsg(null);
+                      setActiveTab(tab.id);
+                    }}
+                    className={`py-2 px-3.5 rounded-xl cursor-pointer transition flex items-center gap-2 shrink-0 ${
+                      isActive
+                        ? "bg-[#E69A00] text-white shadow-xs font-extrabold scale-[1.02]"
+                        : isPassed
+                        ? "bg-amber-100/70 text-amber-900 hover:bg-amber-100 font-semibold"
+                        : "text-gray-600 hover:bg-gray-200/70"
+                    }`}
+                  >
+                    {isPassed ? (
+                      <span className="w-4 h-4 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px]">
+                        ✓
+                      </span>
+                    ) : null}
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Form Body */}
@@ -1084,10 +1020,10 @@ export default function GiftPlanManagement() {
                     <div className="flex items-center justify-between bg-amber-50 p-3 rounded-2xl border border-amber-100">
                       <div>
                         <h4 className="font-bold text-amber-900 text-xs">
-                          Combo Products Array ({products.length} Items)
+                          Included Products ({products.length} Items)
                         </h4>
                         <p className="text-[10px] text-amber-700">
-                          These items are passed as `products` array in POST & PATCH requests
+                          Add the honey varieties included in this combo box
                         </p>
                       </div>
 
@@ -1336,7 +1272,7 @@ export default function GiftPlanManagement() {
                                 {imgId && editingComboId && (
                                   <button
                                     type="button"
-                                    title="Delete image from API"
+                                    title="Delete image"
                                     onClick={() => handleDeleteComboImage(editingComboId, imgId)}
                                     className="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl opacity-90 hover:opacity-100 shadow-md transition cursor-pointer"
                                   >
@@ -1382,8 +1318,8 @@ export default function GiftPlanManagement() {
                           <p className="text-xs font-bold text-gray-700">
                             Click to select product image files
                           </p>
-                          <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
-                            POST /api/combo/products/image-uploads/&#123;comboProductId&#125;
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            High resolution product photos (PNG, JPG, WEBP)
                           </p>
                         </div>
                       </div>
@@ -1426,7 +1362,7 @@ export default function GiftPlanManagement() {
               </div>
 
               {/* Modal Actions Footer */}
-              <div className="shrink-0 bg-gray-50 border-t border-gray-200 px-5 py-3 flex items-center justify-between">
+              <div className="shrink-0 bg-gray-50 border-t border-gray-200 px-5 py-3 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   disabled={submitting}
@@ -1436,22 +1372,57 @@ export default function GiftPlanManagement() {
                   Cancel
                 </button>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-6 py-2.5 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={16} />
+                <div className="flex items-center gap-2">
+                  {/* Previous Step Button */}
+                  {activeTab !== "info" && (
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={handlePrevStep}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <ArrowLeft size={15} />
+                      Back
+                    </button>
                   )}
-                  {submitting
-                    ? "Saving Combo..."
-                    : editingComboId
-                    ? "Update Combo Product (PATCH)"
-                    : "Create Combo Product (POST)"}
-                </button>
+
+                  {/* Next Step Button (when not on Step 4) */}
+                  {activeTab !== "images" ? (
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={handleNextStep}
+                      className="px-5 py-2.5 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Next Step</span>
+                      <ArrowRight size={15} />
+                    </button>
+                  ) : null}
+
+                  {/* Submit / Save Changes Button */}
+                  {(activeTab === "images" || editingComboId) && (
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                        activeTab === "images"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-gray-800 hover:bg-black text-xs px-3.5 py-2"
+                      }`}
+                    >
+                      {submitting ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={16} />
+                      )}
+                      {submitting
+                        ? "Saving Combo..."
+                        : editingComboId
+                        ? "Save Changes"
+                        : "Create Combo Product"}
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>
