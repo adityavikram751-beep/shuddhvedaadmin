@@ -52,6 +52,33 @@ export interface ComboImage {
   path?: string;
 }
 
+export interface NutrientItem {
+  unit: string;
+  per_100g: number;
+  per_serving: number;
+  rda_percent?: number | null;
+}
+
+export interface NutritionInfo {
+  serving_size?: {
+    quantity: number;
+    unit: string;
+    weight_g: number;
+  };
+  nutrients?: {
+    energy?: NutrientItem;
+    total_fat?: NutrientItem;
+    saturated_fat?: NutrientItem;
+    trans_fat?: NutrientItem;
+    cholesterol?: NutrientItem;
+    carbohydrates?: NutrientItem;
+    natural_sugar?: NutrientItem;
+    added_sugar?: NutrientItem;
+    protein?: NutrientItem;
+    sodium?: NutrientItem;
+  };
+}
+
 export interface ComboProduct {
   _id?: string;
   id?: string;
@@ -69,6 +96,7 @@ export interface ComboProduct {
   storage_instructions?: string;
   country_of_origin?: string;
   fssai_license_number?: string;
+  nutrition_info?: NutritionInfo;
   is_active?: boolean;
   images?: Array<string | ComboImage>;
   image?: string | ComboImage;
@@ -95,28 +123,41 @@ export default function GiftPlanManagement() {
   // Form Fields
   const [comboName, setComboName] = useState("");
   const [slug, setSlug] = useState("");
-  const [brand, setBrand] = useState("SudhVeda Honey");
-  const [comboSize, setComboSize] = useState<number | "">(4);
-  const [products, setProducts] = useState<ComboProductItem[]>([
-    { name: "Mustard Honey", weight: 250, unit: "g" },
-    { name: "Multiflora Honey", weight: 250, unit: "g" },
-    { name: "Lychee Honey", weight: 250, unit: "g" },
-    { name: "Wild Forest Honey", weight: 250, unit: "g" },
-  ]);
-  const [mrp, setMrp] = useState<number | "">(2000);
-  const [sellingPrice, setSellingPrice] = useState<number | "">(1699);
+  const [brand, setBrand] = useState("");
+  const [comboSize, setComboSize] = useState<number | "">("");
+  const [products, setProducts] = useState<ComboProductItem[]>([]);
+  const [mrp, setMrp] = useState<number | "">("");
+  const [sellingPrice, setSellingPrice] = useState<number | "">("");
   const [description, setDescription] = useState("");
   const [keyBenefits, setKeyBenefits] = useState("");
-  const [manufacturerInfo, setManufacturerInfo] = useState(
-    "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
-  );
-  const [shelfLife, setShelfLife] = useState("24 months from the date of packaging");
-  const [storageInstructions, setStorageInstructions] = useState(
-    "Store in a cool, dry place away from direct sunlight. Do not refrigerate."
-  );
+  const [manufacturerInfo, setManufacturerInfo] = useState("");
+  const [shelfLife, setShelfLife] = useState("");
+  const [storageInstructions, setStorageInstructions] = useState("");
   const [countryOfOrigin, setCountryOfOrigin] = useState("India");
-  const [fssaiLicense, setFssaiLicense] = useState("10021045001234");
+  const [fssaiLicense, setFssaiLicense] = useState("");
   const [isActive, setIsActive] = useState(true);
+
+  // Nutrition Info state
+  const emptyNutritionInfo: NutritionInfo = {
+    serving_size: {
+      quantity: 1,
+      unit: "tbsp",
+      weight_g: 21,
+    },
+    nutrients: {
+      energy: { unit: "kcal", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      saturated_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      trans_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      cholesterol: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: null },
+      carbohydrates: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
+      natural_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
+      added_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      protein: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
+      sodium: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    },
+  };
+  const [nutritionInfo, setNutritionInfo] = useState<NutritionInfo>(emptyNutritionInfo);
 
   // Images state
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -241,30 +282,38 @@ export default function GiftPlanManagement() {
     void fetchComboProducts();
   }, []);
 
+  // Prevent background scrolling when modal or detail drawer is open
+  useEffect(() => {
+    if (isAddModalOpen || selectedComboDetail) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isAddModalOpen, selectedComboDetail]);
+
   // Reset Form
   const resetForm = () => {
     setEditingComboId(null);
     setActiveTab("info");
     setComboName("");
     setSlug("");
-    setBrand("SudhVeda Honey");
-    setComboSize(2);
-    setProducts([
-      { name: "Mustard Honey", weight: 250, unit: "g" },
-      { name: "Lychee Honey", weight: 250, unit: "g" },
-    ]);
+    setBrand("");
+    setComboSize("");
+    setProducts([]);
     setMrp("");
     setSellingPrice("");
     setDescription("");
     setKeyBenefits("");
-    setManufacturerInfo(
-      "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
-    );
-    setShelfLife("24 months from the date of packaging");
-    setStorageInstructions("Store in a cool, dry place away from direct sunlight. Do not refrigerate.");
+    setManufacturerInfo("");
+    setShelfLife("");
+    setStorageInstructions("");
     setCountryOfOrigin("India");
-    setFssaiLicense("10021045001234");
+    setFssaiLicense("");
     setIsActive(true);
+    setNutritionInfo(emptyNutritionInfo);
 
     setImageFiles([]);
     setImagePreviews([]);
@@ -289,32 +338,20 @@ export default function GiftPlanManagement() {
 
     setComboName(targetCombo.combo_name || "");
     setSlug(targetCombo.slug || generateSlug(targetCombo.combo_name || ""));
-    setBrand(targetCombo.brand || "SudhVeda Honey");
-    setComboSize(targetCombo.combo_size || targetCombo.products?.length || 2);
-    setProducts(
-      targetCombo.products && targetCombo.products.length > 0
-        ? targetCombo.products
-        : [
-            { name: "Mustard Honey", weight: 250, unit: "g" },
-            { name: "Lychee Honey", weight: 250, unit: "g" },
-          ]
-    );
+    setBrand(targetCombo.brand || "");
+    setComboSize(targetCombo.combo_size || targetCombo.products?.length || "");
+    setProducts(targetCombo.products || []);
     setMrp(targetCombo.mrp || "");
     setSellingPrice(targetCombo.selling_price || "");
     setDescription(targetCombo.description || "");
     setKeyBenefits(targetCombo.key_benefits || "");
-    setManufacturerInfo(
-      targetCombo.manufacturer_information ||
-        "Manufactured and Packed by SudhVeda Honey Pvt. Ltd., Plot No. 12, Industrial Area, Dehradun, Uttarakhand, India - 248001"
-    );
-    setShelfLife(targetCombo.shelf_life || "24 months from the date of packaging");
-    setStorageInstructions(
-      targetCombo.storage_instructions ||
-        "Store in a cool, dry place away from direct sunlight. Do not refrigerate."
-    );
+    setManufacturerInfo(targetCombo.manufacturer_information || "");
+    setShelfLife(targetCombo.shelf_life || "");
+    setStorageInstructions(targetCombo.storage_instructions || "");
     setCountryOfOrigin(targetCombo.country_of_origin || "India");
-    setFssaiLicense(targetCombo.fssai_license_number || "10021045001234");
+    setFssaiLicense(targetCombo.fssai_license_number || "");
     setIsActive(targetCombo.is_active !== false);
+    setNutritionInfo(targetCombo.nutrition_info || emptyNutritionInfo);
 
     setEditingComboImages(targetCombo.images || []);
     setImageFiles([]);
@@ -407,6 +444,7 @@ export default function GiftPlanManagement() {
       storage_instructions: storageInstructions.trim(),
       country_of_origin: countryOfOrigin.trim(),
       fssai_license_number: fssaiLicense.trim(),
+      nutrition_info: nutritionInfo,
       is_active: isActive,
     };
 
@@ -971,7 +1009,7 @@ export default function GiftPlanManagement() {
                         <input
                           type="text"
                           required
-                          placeholder="mustard-multiflora-lychee-forest-honey-lovers-quartet"
+                          placeholder="e.g. honey-lovers-quartet"
                           value={slug}
                           onChange={(e) => setSlug(e.target.value)}
                           className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] focus:bg-white transition font-mono"
@@ -982,7 +1020,7 @@ export default function GiftPlanManagement() {
                         <label className="block font-bold text-gray-700 mb-1">Brand</label>
                         <input
                           type="text"
-                          placeholder="SudhVeda Honey"
+                          placeholder="e.g. SudhVeda Honey"
                           value={brand}
                           onChange={(e) => setBrand(e.target.value)}
                           className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] focus:bg-white transition font-medium"
@@ -1042,75 +1080,92 @@ export default function GiftPlanManagement() {
                     </div>
 
                     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                      {products.map((p, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-200 text-xs"
-                        >
-                          <span className="w-6 h-6 rounded-full bg-amber-100 text-[#E69A00] font-bold flex items-center justify-center text-[10px] shrink-0">
-                            {idx + 1}
-                          </span>
-
-                          <div className="flex-1">
-                            <input
-                              type="text"
-                              required
-                              placeholder="Honey Name (e.g. Mustard Honey)"
-                              value={p.name}
-                              onChange={(e) => {
-                                const updated = [...products];
-                                updated[idx].name = e.target.value;
-                                updateProductsList(updated);
-                              }}
-                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-medium"
-                            />
-                          </div>
-
-                          <div className="w-24">
-                            <input
-                              type="number"
-                              required
-                              min={1}
-                              placeholder="Weight (250)"
-                              value={p.weight}
-                              onChange={(e) => {
-                                const updated = [...products];
-                                updated[idx].weight = e.target.value ? Number(e.target.value) : "";
-                                updateProductsList(updated);
-                              }}
-                              className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-mono"
-                            />
-                          </div>
-
-                          <div className="w-20">
-                            <select
-                              value={p.unit}
-                              onChange={(e) => {
-                                const updated = [...products];
-                                updated[idx].unit = e.target.value;
-                                updateProductsList(updated);
-                              }}
-                              className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-mono cursor-pointer"
-                            >
-                              <option value="g">g</option>
-                              <option value="kg">kg</option>
-                              <option value="ml">ml</option>
-                            </select>
-                          </div>
-
+                      {products.length === 0 ? (
+                        <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200 space-y-3">
+                          <p className="text-xs font-semibold text-gray-500">
+                            No products added to this combo box yet.
+                          </p>
                           <button
                             type="button"
-                            onClick={() => {
-                              const updated = products.filter((_, i) => i !== idx);
-                              updateProductsList(updated);
-                            }}
-                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
-                            title="Remove Product"
+                            onClick={() =>
+                              updateProductsList([{ name: "", weight: 250, unit: "g" }])
+                            }
+                            className="px-4 py-2 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold rounded-xl text-xs shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
                           >
-                            <Trash2 size={14} />
+                            <Plus size={14} /> Add First Product Item
                           </button>
                         </div>
-                      ))}
+                      ) : (
+                        products.map((p, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-200 text-xs"
+                          >
+                            <span className="w-6 h-6 rounded-full bg-amber-100 text-[#E69A00] font-bold flex items-center justify-center text-[10px] shrink-0">
+                              {idx + 1}
+                            </span>
+
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                required
+                                placeholder="Honey Name (e.g. Mustard Honey)"
+                                value={p.name}
+                                onChange={(e) => {
+                                  const updated = [...products];
+                                  updated[idx].name = e.target.value;
+                                  updateProductsList(updated);
+                                }}
+                                className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-medium"
+                              />
+                            </div>
+
+                            <div className="w-24">
+                              <input
+                                type="number"
+                                required
+                                min={1}
+                                placeholder="Weight (250)"
+                                value={p.weight}
+                                onChange={(e) => {
+                                  const updated = [...products];
+                                  updated[idx].weight = e.target.value ? Number(e.target.value) : "";
+                                  updateProductsList(updated);
+                                }}
+                                className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-mono"
+                              />
+                            </div>
+
+                            <div className="w-20">
+                              <select
+                                value={p.unit}
+                                onChange={(e) => {
+                                  const updated = [...products];
+                                  updated[idx].unit = e.target.value;
+                                  updateProductsList(updated);
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] font-mono cursor-pointer"
+                              >
+                                <option value="g">g</option>
+                                <option value="kg">kg</option>
+                                <option value="ml">ml</option>
+                              </select>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = products.filter((_, i) => i !== idx);
+                                updateProductsList(updated);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                              title="Remove Product"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
@@ -1238,6 +1293,169 @@ export default function GiftPlanManagement() {
                         onChange={(e) => setManufacturerInfo(e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] focus:bg-white transition"
                       />
+                    </div>
+
+                    {/* 🥗 Nutrition Information Section */}
+                    <div className="pt-3 border-t border-gray-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="font-extrabold text-gray-800 text-xs flex items-center gap-1.5">
+                          <Zap size={14} className="text-[#E69A00]" />
+                          Nutrition Information
+                        </label>
+                        <span className="text-[10px] text-gray-400 font-semibold">
+                          Serving Size & Nutrients Breakdown
+                        </span>
+                      </div>
+
+                      {/* Serving Size */}
+                      <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-2xl space-y-2">
+                        <p className="text-[11px] font-bold text-amber-900">Serving Size</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <span className="text-[10px] font-semibold text-gray-500 block mb-0.5">Quantity</span>
+                            <input
+                              type="number"
+                              value={nutritionInfo.serving_size?.quantity || 1}
+                              onChange={(e) =>
+                                setNutritionInfo((prev) => ({
+                                  ...prev,
+                                  serving_size: {
+                                    quantity: Number(e.target.value) || 1,
+                                    unit: prev.serving_size?.unit || "tbsp",
+                                    weight_g: prev.serving_size?.weight_g || 21,
+                                  },
+                                }))
+                              }
+                              className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-mono"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-gray-500 block mb-0.5">Unit</span>
+                            <input
+                              type="text"
+                              value={nutritionInfo.serving_size?.unit || "tbsp"}
+                              onChange={(e) =>
+                                setNutritionInfo((prev) => ({
+                                  ...prev,
+                                  serving_size: {
+                                    quantity: prev.serving_size?.quantity || 1,
+                                    unit: e.target.value,
+                                    weight_g: prev.serving_size?.weight_g || 21,
+                                  },
+                                }))
+                              }
+                              className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-mono"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-gray-500 block mb-0.5">Weight (g)</span>
+                            <input
+                              type="number"
+                              value={nutritionInfo.serving_size?.weight_g || 21}
+                              onChange={(e) =>
+                                setNutritionInfo((prev) => ({
+                                  ...prev,
+                                  serving_size: {
+                                    quantity: prev.serving_size?.quantity || 1,
+                                    unit: prev.serving_size?.unit || "tbsp",
+                                    weight_g: Number(e.target.value) || 0,
+                                  },
+                                }))
+                              }
+                              className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Nutrients Editor Grid */}
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                        <div className="grid grid-cols-12 gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1">
+                          <span className="col-span-4">Nutrient</span>
+                          <span className="col-span-2 text-center">Unit</span>
+                          <span className="col-span-3 text-center">Per 100g</span>
+                          <span className="col-span-3 text-center">Per Serving</span>
+                        </div>
+
+                        {([
+                          { key: "energy", label: "Energy" },
+                          { key: "carbohydrates", label: "Carbohydrates" },
+                          { key: "natural_sugar", label: "Natural Sugar" },
+                          { key: "added_sugar", label: "Added Sugar" },
+                          { key: "total_fat", label: "Total Fat" },
+                          { key: "saturated_fat", label: "Saturated Fat" },
+                          { key: "trans_fat", label: "Trans Fat" },
+                          { key: "cholesterol", label: "Cholesterol" },
+                          { key: "protein", label: "Protein" },
+                          { key: "sodium", label: "Sodium" },
+                        ] as const).map(({ key, label }) => {
+                          const item = nutritionInfo.nutrients?.[key] || {
+                            unit: key === "energy" ? "kcal" : key === "sodium" || key === "cholesterol" ? "mg" : "g",
+                            per_100g: 0,
+                            per_serving: 0,
+                            rda_percent: 0,
+                          };
+
+                          return (
+                            <div
+                              key={key}
+                              className="grid grid-cols-12 gap-1.5 items-center p-1.5 bg-gray-50 rounded-xl border border-gray-150 text-xs"
+                            >
+                              <span className="col-span-4 font-semibold text-gray-700 text-[11px] truncate">
+                                {label}
+                              </span>
+
+                              <span className="col-span-2 text-center text-gray-400 font-mono text-[10px]">
+                                {item.unit}
+                              </span>
+
+                              <div className="col-span-3">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={item.per_100g}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value) || 0;
+                                    setNutritionInfo((prev) => ({
+                                      ...prev,
+                                      nutrients: {
+                                        ...prev.nutrients,
+                                        [key]: {
+                                          ...item,
+                                          per_100g: val,
+                                        },
+                                      },
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-mono text-center"
+                                />
+                              </div>
+
+                              <div className="col-span-3">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={item.per_serving}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value) || 0;
+                                    setNutritionInfo((prev) => ({
+                                      ...prev,
+                                      nutrients: {
+                                        ...prev.nutrients,
+                                        [key]: {
+                                          ...item,
+                                          per_serving: val,
+                                        },
+                                      },
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs font-mono text-center"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1512,6 +1730,47 @@ export default function GiftPlanManagement() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* 🥗 Nutrition Information Card in Drawer */}
+            {selectedComboDetail.nutrition_info && (
+              <div className="p-3 bg-amber-50/60 border border-amber-200/70 rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <strong className="text-amber-950 font-extrabold flex items-center gap-1.5">
+                    <Zap size={14} className="text-[#E69A00]" />
+                    Nutrition Information
+                  </strong>
+                  {selectedComboDetail.nutrition_info.serving_size && (
+                    <span className="text-[10px] text-amber-800 font-semibold">
+                      Per serving ({selectedComboDetail.nutrition_info.serving_size.quantity}{" "}
+                      {selectedComboDetail.nutrition_info.serving_size.unit} /{" "}
+                      {selectedComboDetail.nutrition_info.serving_size.weight_g}g)
+                    </span>
+                  )}
+                </div>
+
+                {selectedComboDetail.nutrition_info.nutrients && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 text-[11px]">
+                    {Object.entries(selectedComboDetail.nutrition_info.nutrients).map(
+                      ([key, nutrient]: [string, any]) =>
+                        nutrient ? (
+                          <div
+                            key={key}
+                            className="p-1.5 bg-white/80 rounded-xl border border-amber-200/50 flex flex-col justify-between"
+                          >
+                            <span className="text-gray-500 font-semibold capitalize text-[10px]">
+                              {key.replace(/_/g, " ")}
+                            </span>
+                            <span className="font-extrabold text-gray-800 font-mono">
+                              {nutrient.per_100g} {nutrient.unit}{" "}
+                              <span className="text-gray-400 font-normal">(/100g)</span>
+                            </span>
+                          </div>
+                        ) : null
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

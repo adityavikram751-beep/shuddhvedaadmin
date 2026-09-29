@@ -55,6 +55,18 @@ export default function CategoryManagement() {
     fetchCategories();
   }, []);
 
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (showModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showModal]);
+
   // ---------- Helper function to get Category Name ----------
   const getCategoryName = (cat: Category) => {
     return cat.category_name || cat.name || "Unnamed Category";
