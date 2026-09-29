@@ -73,6 +73,9 @@ export interface SubscriptionPlan {
   badge: string;
   isPopular: boolean;
   isActive: boolean;
+  image?: string;
+  image_url?: string;
+  public_id?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -247,47 +250,28 @@ export default function SubscribeManagement() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const jsonBody = {
-      name: name.trim(),
-      description: description.trim(),
-      idealFor: idealFor.trim(),
-      price: Number(price),
-      originalPrice: Number(originalPrice) || Number(price),
-      currency: currency.trim() || "INR",
-      badge: badge.trim(),
-      isPopular: Boolean(isPopular),
-      durationMonths: Number(durationMonths) || 12,
-      isActive: Boolean(isActive),
-    };
-
     try {
-      let res: Response;
+      const formData = new FormData();
+      formData.append("name", name.trim());
+      formData.append("description", description.trim());
+      formData.append("idealFor", idealFor.trim());
+      formData.append("price", String(Number(price)));
+      formData.append("originalPrice", String(Number(originalPrice) || Number(price)));
+      formData.append("currency", currency.trim() || "INR");
+      formData.append("badge", badge.trim());
+      formData.append("isPopular", String(Boolean(isPopular)));
+      formData.append("durationMonths", String(Number(durationMonths) || 12));
+      formData.append("isActive", String(Boolean(isActive)));
 
       if (planImageFile) {
-        const formData = new FormData();
-        Object.entries(jsonBody).forEach(([key, val]) => {
-          if (val !== undefined && val !== null) {
-            formData.append(key, String(val));
-          }
-        });
         formData.append("image", planImageFile);
-
-        res = await fetch(`${API_BASE_URL}/api/subscripation/plan/add`, {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-      } else {
-        res = await fetch(`${API_BASE_URL}/api/subscripation/plan/add`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify(jsonBody),
-        });
       }
+
+      const res = await fetch(`${API_BASE_URL}/api/subscripation/plan/add`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
 
       const json = await res.json().catch(() => ({}));
       if (res.ok || json.success || json._id || json.data) {
@@ -637,8 +621,19 @@ export default function SubscribeManagement() {
                 >
                   {/* Card Header & Main Specs */}
                   <div className="p-6 bg-gradient-to-r from-[#FFFBF5] via-white to-amber-50/20 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-2 max-w-2xl">
-                      <div className="flex items-center gap-2.5 flex-wrap">
+                    <div className="flex items-start gap-4 flex-1">
+                      {(plan.image_url || plan.image) && (
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-amber-200/60 bg-amber-50 shrink-0 shadow-2xs">
+                          <img
+                            src={plan.image_url || plan.image}
+                            alt={plan.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2.5 flex-wrap">
                         <h3 className="text-xl font-extrabold text-[#2D2118]">
                           {plan.name}
                         </h3>
@@ -978,6 +973,58 @@ export default function SubscribeManagement() {
                       value={currency}
                       onChange={(e) => setCurrency(e.target.value)}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:border-[#E69A00] focus:bg-white font-mono uppercase"
+                    />
+                  </div>
+                </div>
+
+                {/* Plan Banner Image Upload */}
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Plan Image File (FormData Upload)
+                  </label>
+                  <div
+                    onClick={() => planFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 hover:border-[#E69A00] bg-gray-50 hover:bg-[#FFFBF5] rounded-2xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2"
+                  >
+                    {planImagePreview ? (
+                      <div className="relative w-full max-w-xs h-28">
+                        <img
+                          src={planImagePreview}
+                          alt="Plan Preview"
+                          className="w-full h-full object-cover rounded-xl shadow-2xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPlanImageFile(null);
+                            setPlanImagePreview("");
+                          }}
+                          className="absolute top-1 right-1 p-1 bg-rose-600 text-white rounded-lg text-[10px]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="text-[#E69A00]" size={22} />
+                        <p className="text-xs font-bold text-gray-700">
+                          Click to select plan image file (Sends via FormData)
+                        </p>
+                      </>
+                    )}
+                    <input
+                      ref={planFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setPlanImageFile(file);
+                          setPlanImagePreview(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="hidden"
                     />
                   </div>
                 </div>
