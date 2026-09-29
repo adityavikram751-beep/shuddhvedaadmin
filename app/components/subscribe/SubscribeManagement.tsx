@@ -674,6 +674,7 @@ export default function SubscribeManagement() {
                         </p>
                       )}
                     </div>
+                  </div>
 
                     {/* Price & Action Buttons */}
                     <div className="flex items-center gap-5 shrink-0">

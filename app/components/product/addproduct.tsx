@@ -339,14 +339,10 @@ function CountryDropdown({
 
 const NUTRIENT_KEYS = [
   { key: "energy", label: "Energy" },
-  { key: "total_fat", label: "Total Fat" },
-  { key: "saturated_fat", label: "Saturated Fat" },
-  { key: "trans_fat", label: "Trans Fat" },
-  { key: "cholesterol", label: "Cholesterol" },
   { key: "carbohydrates", label: "Carbohydrates" },
-  { key: "natural_sugar", label: "Natural Sugar" },
-  { key: "added_sugar", label: "Added Sugar" },
+  { key: "total_sugars", label: "Total Sugars" },
   { key: "protein", label: "Protein" },
+  { key: "total_fat", label: "Total Fat" },
   { key: "sodium", label: "Sodium" },
 ];
 
@@ -385,21 +381,17 @@ function AddProductForm() {
   // ---------- Nutrition Info State ----------
   const [servingSize, setServingSize] = useState<{ quantity: any; unit: string; weight_g: any }>({
     quantity: 1,
-    unit: "tbsp",
-    weight_g: 21,
+    unit: "serve",
+    weight_g: 20,
   });
 
   const [nutrients, setNutrients] = useState<Record<string, { unit: string; per_100g: any; per_serving: any; rda_percent: any }>>({
-    energy: { unit: "kcal", per_100g: 336, per_serving: 70.56, rda_percent: 3.5 },
-    total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-    saturated_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-    trans_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-    cholesterol: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: "" },
-    carbohydrates: { unit: "g", per_100g: 84, per_serving: 17.64, rda_percent: "" },
-    natural_sugar: { unit: "g", per_100g: 84, per_serving: 17.64, rda_percent: "" },
-    added_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-    protein: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" },
-    sodium: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: 0 },
+    energy: { unit: "kcal", per_100g: 330.88, per_serving: 66.18, rda_percent: "" },
+    carbohydrates: { unit: "g", per_100g: 82.45, per_serving: 16.49, rda_percent: "" },
+    total_sugars: { unit: "g", per_100g: 78.2, per_serving: 15.64, rda_percent: "" },
+    protein: { unit: "g", per_100g: 0.27, per_serving: 0.054, rda_percent: "" },
+    total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" },
+    sodium: { unit: "mg", per_100g: 8.53, per_serving: 1.71, rda_percent: "" },
   });
 
   const buildNutritionInfoPayload = () => {
@@ -555,7 +547,7 @@ function AddProductForm() {
         // --- Step 1 fields ---
         setProductName(p.product_name || p.name || "");
         setBrand(p.brand || "SudhVeda Honey");
-        setCategoryId(p.categoryId?._id || p.categoryId || "");
+        setCategoryId(p.categoryId?._id || p.categoryId || p.category?._id || p.category || p.category_id?._id || p.category_id || "");
         setProductType(p.product_type || "honey");
         setFloralSource(p.floral_source || "");
         setDescription(p.description || "");
@@ -575,8 +567,8 @@ function AddProductForm() {
             if (info.serving_size) {
               setServingSize({
                 quantity: info.serving_size.quantity ?? 1,
-                unit: info.serving_size.unit ?? "tbsp",
-                weight_g: info.serving_size.weight_g ?? 21,
+                unit: info.serving_size.unit ?? "serve",
+                weight_g: info.serving_size.weight_g ?? 20,
               });
             }
             if (info.nutrients) {
@@ -585,8 +577,9 @@ function AddProductForm() {
                 Object.keys(info.nutrients).forEach((k) => {
                   const item = info.nutrients[k];
                   if (item) {
-                    updated[k] = {
-                      unit: item.unit ?? prev[k]?.unit ?? "",
+                    const targetKey = k === "natural_sugar" || k === "total_sugar" ? "total_sugars" : k;
+                    updated[targetKey] = {
+                      unit: item.unit ?? prev[targetKey]?.unit ?? "",
                       per_100g: item.per_100g ?? 0,
                       per_serving: item.per_serving ?? 0,
                       rda_percent: item.rda_percent ?? "",
@@ -708,6 +701,8 @@ function AddProductForm() {
         };
         if (categoryId) {
           payload.categoryId = categoryId;
+          payload.category = categoryId;
+          payload.category_id = categoryId;
         }
 
         const res = await fetch(`${API_BASE_URL}/api/products/update/product-information/${productId}`, {
@@ -720,6 +715,39 @@ function AddProductForm() {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.message || `Failed to update product info (${res.status})`);
+        }
+
+        // Upload or update product image if a new image was selected during edit
+        if (thumbnail) {
+          try {
+            const formData = new FormData();
+            const isUpdate = Boolean(thumbnailImageId);
+            if (isUpdate) {
+              formData.append("image", thumbnail);
+            } else {
+              formData.append("images", thumbnail);
+            }
+
+            const imgUrl = isUpdate
+              ? `${API_BASE_URL}/api/products/${productId}/images/${thumbnailImageId}`
+              : `${API_BASE_URL}/api/products/${productId}/images`;
+
+            const imgRes = await fetch(imgUrl, {
+              method: isUpdate ? "PUT" : "POST",
+              credentials: "include",
+              body: formData,
+            });
+
+            if (imgRes.ok) {
+              const imgData = await imgRes.json().catch(() => ({}));
+              const savedImg = imgData.data || imgData.image || imgData;
+              const nextId = getId(savedImg);
+              if (nextId) setThumbnailImageId(nextId);
+              setThumbnail(null);
+            }
+          } catch (imgErr) {
+            console.error("Error updating image:", imgErr);
+          }
         }
 
         showToast("Product information updated successfully");
