@@ -340,7 +340,8 @@ function CountryDropdown({
 const NUTRIENT_KEYS = [
   { key: "energy", label: "Energy" },
   { key: "carbohydrates", label: "Carbohydrates" },
-  { key: "total_sugars", label: "Total Sugars" },
+  { key: "total_sugar", label: "Total Sugar" },
+  { key: "added_sugar", label: "Added Sugar" },
   { key: "protein", label: "Protein" },
   { key: "total_fat", label: "Total Fat" },
   { key: "sodium", label: "Sodium" },
@@ -381,41 +382,39 @@ function AddProductForm() {
   // ---------- Nutrition Info State ----------
   const [servingSize, setServingSize] = useState<{ quantity: any; unit: string; weight_g: any }>({
     quantity: 1,
-    unit: "serve",
+    unit: "serving",
     weight_g: 20,
   });
 
-  const [nutrients, setNutrients] = useState<Record<string, { unit: string; per_100g: any; per_serving: any; rda_percent: any }>>({
-    energy: { unit: "kcal", per_100g: 330.88, per_serving: 66.18, rda_percent: "" },
-    carbohydrates: { unit: "g", per_100g: 82.45, per_serving: 16.49, rda_percent: "" },
-    total_sugars: { unit: "g", per_100g: 78.2, per_serving: 15.64, rda_percent: "" },
-    protein: { unit: "g", per_100g: 0.27, per_serving: 0.054, rda_percent: "" },
-    total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" },
-    sodium: { unit: "mg", per_100g: 8.53, per_serving: 1.71, rda_percent: "" },
+  const [nutrients, setNutrients] = useState<Record<string, { unit: string; per_100g: any; per_serving: any }>>({
+    energy: { unit: "kcal", per_100g: 328.52, per_serving: 65.70 },
+    carbohydrates: { unit: "g", per_100g: 81.92, per_serving: 16.38 },
+    total_sugar: { unit: "g", per_100g: 82.40, per_serving: 16.48 },
+    added_sugar: { unit: "g", per_100g: 0, per_serving: 0 },
+    protein: { unit: "g", per_100g: 0.21, per_serving: 0.04 },
+    total_fat: { unit: "g", per_100g: 0, per_serving: 0 },
+    sodium: { unit: "mg", per_100g: 9.12, per_serving: 1.82 },
   });
 
   const buildNutritionInfoPayload = () => {
     const serving_size = {
       quantity: Number(servingSize.quantity) || 1,
-      unit: String(servingSize.unit || "tbsp"),
-      weight_g: Number(servingSize.weight_g) || 21,
+      unit: String(servingSize.unit || "serving"),
+      weight_g: Number(servingSize.weight_g) || 20,
     };
 
     const nutrientsFormatted: Record<string, any> = {};
-    Object.entries(nutrients).forEach(([key, val]) => {
-      const rawRda = val.rda_percent;
-      const isNullRda =
-        rawRda === "" ||
-        rawRda === null ||
-        rawRda === undefined ||
-        rawRda === "null" ||
-        isNaN(Number(rawRda));
+    NUTRIENT_KEYS.forEach(({ key }) => {
+      const val = nutrients[key] || {
+        unit: key === "energy" ? "kcal" : key === "sodium" ? "mg" : "g",
+        per_100g: 0,
+        per_serving: 0,
+      };
 
       nutrientsFormatted[key] = {
-        unit: String(val.unit || ""),
+        unit: String(val.unit || (key === "energy" ? "kcal" : key === "sodium" ? "mg" : "g")),
         per_100g: val.per_100g === "" || val.per_100g === null ? 0 : Number(val.per_100g),
         per_serving: val.per_serving === "" || val.per_serving === null ? 0 : Number(val.per_serving),
-        rda_percent: isNullRda ? null : Number(rawRda),
       };
     });
 
@@ -567,7 +566,7 @@ function AddProductForm() {
             if (info.serving_size) {
               setServingSize({
                 quantity: info.serving_size.quantity ?? 1,
-                unit: info.serving_size.unit ?? "serve",
+                unit: info.serving_size.unit ?? "serving",
                 weight_g: info.serving_size.weight_g ?? 20,
               });
             }
@@ -577,12 +576,12 @@ function AddProductForm() {
                 Object.keys(info.nutrients).forEach((k) => {
                   const item = info.nutrients[k];
                   if (item) {
-                    const targetKey = k === "natural_sugar" || k === "total_sugar" ? "total_sugars" : k;
+                    const targetKey =
+                      k === "natural_sugar" || k === "total_sugars" ? "total_sugar" : k;
                     updated[targetKey] = {
-                      unit: item.unit ?? prev[targetKey]?.unit ?? "",
+                      unit: item.unit ?? prev[targetKey]?.unit ?? (targetKey === "energy" ? "kcal" : targetKey === "sodium" ? "mg" : "g"),
                       per_100g: item.per_100g ?? 0,
                       per_serving: item.per_serving ?? 0,
-                      rda_percent: item.rda_percent ?? "",
                     };
                   }
                 });
@@ -1366,7 +1365,7 @@ function AddProductForm() {
             <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-5">
               <div className="border-b border-slate-100 pb-3">
                 <h2 className="text-sm font-bold text-[#0F172A]">Nutritional Information</h2>
-                <p className="text-[11px] text-slate-500 font-medium">Configure serving size and nutrient values (per 100g, per serving & % RDA)</p>
+                <p className="text-[11px] text-slate-500 font-medium">Configure serving size and nutrient values (per 100g & per serving)</p>
               </div>
 
               {/* Serving Size Settings */}
@@ -1379,7 +1378,7 @@ function AddProductForm() {
                       type="number"
                       value={servingSize.quantity}
                       onChange={(e) => setServingSize({ ...servingSize, quantity: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-[#FAFAFA] focus:outline-none focus:border-[#D97706]"
                       placeholder="1"
                     />
                   </div>
@@ -1389,8 +1388,8 @@ function AddProductForm() {
                       type="text"
                       value={servingSize.unit}
                       onChange={(e) => setServingSize({ ...servingSize, unit: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
-                      placeholder="tbsp"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-[#FAFAFA] focus:outline-none focus:border-[#D97706]"
+                      placeholder="serving"
                     />
                   </div>
                   <div>
@@ -1399,8 +1398,8 @@ function AddProductForm() {
                       type="number"
                       value={servingSize.weight_g}
                       onChange={(e) => setServingSize({ ...servingSize, weight_g: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-[#D97706]"
-                      placeholder="21"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-[#FAFAFA] focus:outline-none focus:border-[#D97706]"
+                      placeholder="20"
                     />
                   </div>
                 </div>
@@ -1415,12 +1414,15 @@ function AddProductForm() {
                       <th className="py-2.5 px-3">Unit</th>
                       <th className="py-2.5 px-3">Per 100g</th>
                       <th className="py-2.5 px-3">Per Serving</th>
-                      <th className="py-2.5 px-3">% RDA (or leave blank for null)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {NUTRIENT_KEYS.map(({ key, label }) => {
-                      const item = nutrients[key] || { unit: "g", per_100g: 0, per_serving: 0, rda_percent: "" };
+                      const item = nutrients[key] || {
+                        unit: key === "energy" ? "kcal" : key === "sodium" ? "mg" : "g",
+                        per_100g: 0,
+                        per_serving: 0,
+                      };
                       return (
                         <tr key={key} className="hover:bg-slate-50/50">
                           <td className="py-2 px-3 font-semibold text-slate-800">{label}</td>
@@ -1462,21 +1464,6 @@ function AddProductForm() {
                                   [key]: { ...item, per_serving: e.target.value },
                                 })
                               }
-                              className="w-24 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="number"
-                              step="any"
-                              value={item.rda_percent ?? ""}
-                              onChange={(e) =>
-                                setNutrients({
-                                  ...nutrients,
-                                  [key]: { ...item, rda_percent: e.target.value },
-                                })
-                              }
-                              placeholder="null"
                               className="w-24 px-2 py-1 rounded border border-slate-200 text-xs focus:outline-none focus:border-[#D97706]"
                             />
                           </td>

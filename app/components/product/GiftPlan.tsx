@@ -67,15 +67,13 @@ export interface NutritionInfo {
   };
   nutrients?: {
     energy?: NutrientItem;
-    total_fat?: NutrientItem;
-    saturated_fat?: NutrientItem;
-    trans_fat?: NutrientItem;
-    cholesterol?: NutrientItem;
     carbohydrates?: NutrientItem;
-    natural_sugar?: NutrientItem;
+    total_sugar?: NutrientItem;
     added_sugar?: NutrientItem;
     protein?: NutrientItem;
+    total_fat?: NutrientItem;
     sodium?: NutrientItem;
+    [key: string]: any;
   };
 }
 
@@ -141,20 +139,17 @@ export default function GiftPlanManagement() {
   const emptyNutritionInfo: NutritionInfo = {
     serving_size: {
       quantity: 1,
-      unit: "tbsp",
-      weight_g: 21,
+      unit: "serving",
+      weight_g: 20,
     },
     nutrients: {
-      energy: { unit: "kcal", per_100g: 0, per_serving: 0, rda_percent: 0 },
-      total_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-      saturated_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-      trans_fat: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-      cholesterol: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: null },
-      carbohydrates: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
-      natural_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
-      added_sugar: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: 0 },
-      protein: { unit: "g", per_100g: 0, per_serving: 0, rda_percent: null },
-      sodium: { unit: "mg", per_100g: 0, per_serving: 0, rda_percent: 0 },
+      energy: { unit: "kcal", per_100g: 328.52, per_serving: 65.70 },
+      carbohydrates: { unit: "g", per_100g: 81.92, per_serving: 16.38 },
+      total_sugar: { unit: "g", per_100g: 82.40, per_serving: 16.48 },
+      added_sugar: { unit: "g", per_100g: 0, per_serving: 0 },
+      protein: { unit: "g", per_100g: 0.21, per_serving: 0.04 },
+      total_fat: { unit: "g", per_100g: 0, per_serving: 0 },
+      sodium: { unit: "mg", per_100g: 9.12, per_serving: 1.82 },
     },
   };
   const [nutritionInfo, setNutritionInfo] = useState<NutritionInfo>(emptyNutritionInfo);
@@ -245,14 +240,14 @@ export default function GiftPlanManagement() {
         const list: ComboProduct[] = Array.isArray(json.data)
           ? json.data
           : Array.isArray(json.products)
-          ? json.products
-          : Array.isArray(json.comboProducts)
-          ? json.comboProducts
-          : Array.isArray(json.combos)
-          ? json.combos
-          : Array.isArray(json)
-          ? json
-          : [];
+            ? json.products
+            : Array.isArray(json.comboProducts)
+              ? json.comboProducts
+              : Array.isArray(json.combos)
+                ? json.combos
+                : Array.isArray(json)
+                  ? json
+                  : [];
 
         // Enrich with details if needed
         const enrichedList = await Promise.all(
@@ -350,8 +345,27 @@ export default function GiftPlanManagement() {
     setStorageInstructions(targetCombo.storage_instructions || "");
     setCountryOfOrigin(targetCombo.country_of_origin || "India");
     setFssaiLicense(targetCombo.fssai_license_number || "");
-    setIsActive(targetCombo.is_active !== false);
-    setNutritionInfo(targetCombo.nutrition_info || emptyNutritionInfo);
+    if (targetCombo.nutrition_info) {
+      const rawNutrients = targetCombo.nutrition_info.nutrients || {};
+      setNutritionInfo({
+        serving_size: {
+          quantity: targetCombo.nutrition_info.serving_size?.quantity ?? 1,
+          unit: targetCombo.nutrition_info.serving_size?.unit ?? "serving",
+          weight_g: targetCombo.nutrition_info.serving_size?.weight_g ?? 20,
+        },
+        nutrients: {
+          energy: rawNutrients.energy || { unit: "kcal", per_100g: 328.52, per_serving: 65.70 },
+          carbohydrates: rawNutrients.carbohydrates || { unit: "g", per_100g: 81.92, per_serving: 16.38 },
+          total_sugar: rawNutrients.total_sugar || rawNutrients.total_sugars || rawNutrients.natural_sugar || { unit: "g", per_100g: 82.40, per_serving: 16.48 },
+          added_sugar: rawNutrients.added_sugar || { unit: "g", per_100g: 0, per_serving: 0 },
+          protein: rawNutrients.protein || { unit: "g", per_100g: 0.21, per_serving: 0.04 },
+          total_fat: rawNutrients.total_fat || { unit: "g", per_100g: 0, per_serving: 0 },
+          sodium: rawNutrients.sodium || { unit: "mg", per_100g: 9.12, per_serving: 1.82 },
+        },
+      });
+    } else {
+      setNutritionInfo(emptyNutritionInfo);
+    }
 
     setEditingComboImages(targetCombo.images || []);
     setImageFiles([]);
@@ -429,6 +443,51 @@ export default function GiftPlanManagement() {
       unit: p.unit.trim() || "g",
     }));
 
+    const cleanNutritionInfo = {
+      serving_size: {
+        quantity: Number(nutritionInfo.serving_size?.quantity) || 1,
+        unit: String(nutritionInfo.serving_size?.unit || "serving"),
+        weight_g: Number(nutritionInfo.serving_size?.weight_g) || 20,
+      },
+      nutrients: {
+        energy: {
+          unit: "kcal",
+          per_100g: Number(nutritionInfo.nutrients?.energy?.per_100g ?? 328.52),
+          per_serving: Number(nutritionInfo.nutrients?.energy?.per_serving ?? 65.70),
+        },
+        carbohydrates: {
+          unit: "g",
+          per_100g: Number(nutritionInfo.nutrients?.carbohydrates?.per_100g ?? 81.92),
+          per_serving: Number(nutritionInfo.nutrients?.carbohydrates?.per_serving ?? 16.38),
+        },
+        total_sugar: {
+          unit: "g",
+          per_100g: Number(nutritionInfo.nutrients?.total_sugar?.per_100g ?? 82.40),
+          per_serving: Number(nutritionInfo.nutrients?.total_sugar?.per_serving ?? 16.48),
+        },
+        added_sugar: {
+          unit: "g",
+          per_100g: Number(nutritionInfo.nutrients?.added_sugar?.per_100g ?? 0),
+          per_serving: Number(nutritionInfo.nutrients?.added_sugar?.per_serving ?? 0),
+        },
+        protein: {
+          unit: "g",
+          per_100g: Number(nutritionInfo.nutrients?.protein?.per_100g ?? 0.21),
+          per_serving: Number(nutritionInfo.nutrients?.protein?.per_serving ?? 0.04),
+        },
+        total_fat: {
+          unit: "g",
+          per_100g: Number(nutritionInfo.nutrients?.total_fat?.per_100g ?? 0),
+          per_serving: Number(nutritionInfo.nutrients?.total_fat?.per_serving ?? 0),
+        },
+        sodium: {
+          unit: "mg",
+          per_100g: Number(nutritionInfo.nutrients?.sodium?.per_100g ?? 9.12),
+          per_serving: Number(nutritionInfo.nutrients?.sodium?.per_serving ?? 1.82),
+        },
+      },
+    };
+
     const payload = {
       combo_name: comboName.trim(),
       slug: slug.trim() || generateSlug(comboName),
@@ -444,7 +503,7 @@ export default function GiftPlanManagement() {
       storage_instructions: storageInstructions.trim(),
       country_of_origin: countryOfOrigin.trim(),
       fssai_license_number: fssaiLicense.trim(),
-      nutrition_info: nutritionInfo,
+      nutrition_info: cleanNutritionInfo,
       is_active: isActive,
     };
 
@@ -504,9 +563,9 @@ export default function GiftPlanManagement() {
       if (imageFiles.length > 0 && targetComboId) {
         setStepStatusMsg("Uploading image files...");
         const formData = new FormData();
+        const fieldName = editingComboId ? "image" : "images";
         imageFiles.forEach((file) => {
-          formData.append("images", file);
-          formData.append("image", file);
+          formData.append(fieldName, file);
         });
 
         const imgEndpoint = editingComboId
@@ -763,11 +822,10 @@ export default function GiftPlanManagement() {
                     {/* Top Badges */}
                     <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 pointer-events-none">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-sm pointer-events-auto backdrop-blur-md ${
-                          combo.is_active !== false
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-sm pointer-events-auto backdrop-blur-md ${combo.is_active !== false
                             ? "bg-emerald-500/90 text-white"
                             : "bg-gray-700/80 text-white"
-                        }`}
+                          }`}
                       >
                         {combo.is_active !== false ? "Active" : "Inactive"}
                       </span>
@@ -941,13 +999,12 @@ export default function GiftPlanManagement() {
                       setFormErrorMsg(null);
                       setActiveTab(tab.id);
                     }}
-                    className={`py-2 px-3.5 rounded-xl cursor-pointer transition flex items-center gap-2 shrink-0 ${
-                      isActive
+                    className={`py-2 px-3.5 rounded-xl cursor-pointer transition flex items-center gap-2 shrink-0 ${isActive
                         ? "bg-[#E69A00] text-white shadow-xs font-extrabold scale-[1.02]"
                         : isPassed
-                        ? "bg-amber-100/70 text-amber-900 hover:bg-amber-100 font-semibold"
-                        : "text-gray-600 hover:bg-gray-200/70"
-                    }`}
+                          ? "bg-amber-100/70 text-amber-900 hover:bg-amber-100 font-semibold"
+                          : "text-gray-600 hover:bg-gray-200/70"
+                      }`}
                   >
                     {isPassed ? (
                       <span className="w-4 h-4 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px]">
@@ -1321,8 +1378,8 @@ export default function GiftPlanManagement() {
                                   ...prev,
                                   serving_size: {
                                     quantity: Number(e.target.value) || 1,
-                                    unit: prev.serving_size?.unit || "tbsp",
-                                    weight_g: prev.serving_size?.weight_g || 21,
+                                    unit: prev.serving_size?.unit || "serving",
+                                    weight_g: prev.serving_size?.weight_g || 20,
                                   },
                                 }))
                               }
@@ -1333,14 +1390,14 @@ export default function GiftPlanManagement() {
                             <span className="text-[10px] font-semibold text-gray-500 block mb-0.5">Unit</span>
                             <input
                               type="text"
-                              value={nutritionInfo.serving_size?.unit || "tbsp"}
+                              value={nutritionInfo.serving_size?.unit || "serving"}
                               onChange={(e) =>
                                 setNutritionInfo((prev) => ({
                                   ...prev,
                                   serving_size: {
                                     quantity: prev.serving_size?.quantity || 1,
                                     unit: e.target.value,
-                                    weight_g: prev.serving_size?.weight_g || 21,
+                                    weight_g: prev.serving_size?.weight_g || 20,
                                   },
                                 }))
                               }
@@ -1351,13 +1408,13 @@ export default function GiftPlanManagement() {
                             <span className="text-[10px] font-semibold text-gray-500 block mb-0.5">Weight (g)</span>
                             <input
                               type="number"
-                              value={nutritionInfo.serving_size?.weight_g || 21}
+                              value={nutritionInfo.serving_size?.weight_g || 20}
                               onChange={(e) =>
                                 setNutritionInfo((prev) => ({
                                   ...prev,
                                   serving_size: {
                                     quantity: prev.serving_size?.quantity || 1,
-                                    unit: prev.serving_size?.unit || "tbsp",
+                                    unit: prev.serving_size?.unit || "serving",
                                     weight_g: Number(e.target.value) || 0,
                                   },
                                 }))
@@ -1380,20 +1437,16 @@ export default function GiftPlanManagement() {
                         {([
                           { key: "energy", label: "Energy" },
                           { key: "carbohydrates", label: "Carbohydrates" },
-                          { key: "natural_sugar", label: "Natural Sugar" },
+                          { key: "total_sugar", label: "Total Sugar" },
                           { key: "added_sugar", label: "Added Sugar" },
-                          { key: "total_fat", label: "Total Fat" },
-                          { key: "saturated_fat", label: "Saturated Fat" },
-                          { key: "trans_fat", label: "Trans Fat" },
-                          { key: "cholesterol", label: "Cholesterol" },
                           { key: "protein", label: "Protein" },
+                          { key: "total_fat", label: "Total Fat" },
                           { key: "sodium", label: "Sodium" },
                         ] as const).map(({ key, label }) => {
                           const item = nutritionInfo.nutrients?.[key] || {
-                            unit: key === "energy" ? "kcal" : key === "sodium" || key === "cholesterol" ? "mg" : "g",
+                            unit: key === "energy" ? "kcal" : key === "sodium" ? "mg" : "g",
                             per_100g: 0,
                             per_serving: 0,
-                            rda_percent: 0,
                           };
 
                           return (
@@ -1622,11 +1675,10 @@ export default function GiftPlanManagement() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
-                        activeTab === "images"
+                      className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50 ${activeTab === "images"
                           ? "bg-emerald-600 hover:bg-emerald-700"
                           : "bg-gray-800 hover:bg-black text-xs px-3.5 py-2"
-                      }`}
+                        }`}
                     >
                       {submitting ? (
                         <Loader2 size={16} className="animate-spin" />
@@ -1636,8 +1688,8 @@ export default function GiftPlanManagement() {
                       {submitting
                         ? "Saving Combo..."
                         : editingComboId
-                        ? "Save Changes"
-                        : "Create Combo Product"}
+                          ? "Save Changes"
+                          : "Create Combo Product"}
                     </button>
                   )}
                 </div>
