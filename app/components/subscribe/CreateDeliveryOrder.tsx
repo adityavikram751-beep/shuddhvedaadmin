@@ -51,6 +51,26 @@ export interface Customer {
   email: string;
 }
 
+export interface PlanComboSetProduct {
+  _id?: string;
+  name: string;
+  weight: number;
+  unit: string;
+}
+
+export interface PlanComboSetItem {
+  _id?: string;
+  monthName: string;
+  title: string;
+  image?: string;
+  public_id?: string;
+  season?: string;
+  harvestTitle?: string;
+  description?: string;
+  readMore?: string;
+  products?: PlanComboSetProduct[];
+}
+
 export interface Plan {
   name: string;
   plan_image?: string;
@@ -225,7 +245,7 @@ export interface CatalogProduct {
 
 export function extractVariantsFromProduct(prod: any): CatalogVariant[] {
   if (!prod) return [];
-  
+
   let rawList: any[] = [];
   if (Array.isArray(prod.variantDocumentId) && prod.variantDocumentId.length > 0) {
     rawList = prod.variantDocumentId;
@@ -246,15 +266,7 @@ export function extractVariantsFromProduct(prod: any): CatalogVariant[] {
   } else if (Array.isArray(prod.pack_sizes) && prod.pack_sizes.length > 0) {
     rawList = prod.pack_sizes;
   } else {
-    rawList = [
-      {
-        _id: prod._id || prod.id,
-        weight: prod.weight || prod.quantityPerJar || 250,
-        unit: prod.unit || prod.quantityUnit || "g",
-        price: prod.price || prod.sellingPrice || 299,
-        mrp: prod.mrp || prod.originalPrice || 349,
-      },
-    ];
+
   }
 
   return rawList.map((v: any, idx: number) => {
@@ -265,10 +277,10 @@ export function extractVariantsFromProduct(prod: any): CatalogVariant[] {
       v?.unit ?? v?.quantityUnit ?? prod?.unit ?? "g"
     );
     const price = Number(
-      v?.price ?? v?.sellingPrice ?? v?.selling_price ?? v?.variant_price ?? prod?.price ?? 299
+      v?.price ?? v?.sellingPrice ?? v?.selling_price ?? v?.variant_price ?? prod?.price ?? 0
     );
     const mrp = Number(
-      v?.mrp ?? v?.originalPrice ?? v?.original_price ?? price ?? 349
+      v?.mrp ?? v?.originalPrice ?? v?.original_price ?? price ?? 0
     );
     const save = v?.save !== undefined ? Number(v.save) : Math.max(0, mrp - price);
     const id = String(v?._id || v?.id || v?.variant_id || `var-${idx}`);
@@ -332,8 +344,94 @@ export function parseEtdToDateString(etdValue: any): string | null {
   return null;
 }
 
-const DEFAULT_HONEY_IMAGE =
+export const DEFAULT_HONEY_IMAGE =
   "https://images.unsplash.com/photo-1587049352847-4a222e784d38?w=400&auto=format&fit=crop&q=80";
+
+export const FALLBACK_HONEY_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="%23FFFBF0" stroke="%23E69A00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M5 8h14"/><path d="M6 8v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M9 12h6"/></svg>`;
+
+export function getPlanIdFromPurchaseItem(item: any): string {
+  if (!item) return "";
+  if (typeof item.plan === "string" && item.plan.trim()) {
+    return item.plan.trim();
+  }
+  if (typeof item.plan === "object" && item.plan !== null) {
+    const objId = (item.plan as any)._id || (item.plan as any).id || (item.plan as any).planId;
+    if (typeof objId === "string" && objId.trim()) return objId.trim();
+  }
+  if (item.planId && typeof item.planId === "string" && item.planId.trim()) return item.planId.trim();
+  if (item.plan_id && typeof item.plan_id === "string" && item.plan_id.trim()) return item.plan_id.trim();
+  return "";
+}
+
+export function extractComboImageUrl(combo: any): string {
+  if (!combo) return DEFAULT_HONEY_IMAGE;
+  let rawUrl = "";
+  if (typeof combo === "string") {
+    rawUrl = combo;
+  } else if (typeof combo === "object" && combo !== null) {
+    const candidates = [
+      combo.image,
+      combo.image_url,
+      combo.imageUrl,
+      combo.plan_image,
+      combo.planImage,
+      combo.cover_image,
+      combo.coverImage,
+      combo.thumbnail,
+      combo.thumbnail_url,
+      combo.public_id,
+      combo.path,
+      combo.url,
+      combo.plan?.plan_image,
+      combo.plan?.image_url,
+      combo.plan?.image,
+      combo.combosets?.[0]?.image,
+    ];
+
+    for (const c of candidates) {
+      if (!c) continue;
+      if (typeof c === "string" && c.trim()) {
+        rawUrl = c;
+        break;
+      }
+      if (typeof c === "object" && c !== null) {
+        const nestedUrl =
+          c.url || c.image_url || c.imageUrl || c.secure_url || c.path || c.public_id || "";
+        if (typeof nestedUrl === "string" && nestedUrl.trim()) {
+          rawUrl = nestedUrl;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!rawUrl || !rawUrl.trim()) return DEFAULT_HONEY_IMAGE;
+
+  rawUrl = rawUrl.trim();
+
+  if (
+    rawUrl.startsWith("http://") ||
+    rawUrl.startsWith("https://") ||
+    rawUrl.startsWith("blob:") ||
+    rawUrl.startsWith("data:")
+  ) {
+    return rawUrl;
+  }
+
+  if (rawUrl.includes("cloudinary.com")) {
+    return rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+  }
+
+  if (rawUrl.startsWith("sudhvedahoney/") || rawUrl.startsWith("plans/") || rawUrl.includes("sudhvedahoney")) {
+    const cleanPublicId = rawUrl.startsWith("sudhvedahoney/")
+      ? rawUrl
+      : `sudhvedahoney/${rawUrl.replace(/^\//, "")}`;
+    return `https://res.cloudinary.com/anjp8e9i/image/upload/${cleanPublicId}`;
+  }
+
+  const cleanPath = rawUrl.replace(/^\//, "");
+  return `${API_BASE_URL}/${cleanPath}`;
+}
 
 export function extractProductImageUrl(prod: any, variant?: any): string {
   let rawUrl = "";
@@ -443,6 +541,7 @@ export default function SubscribePlanOrders() {
 
   // POST API State (Create Plan Delivery Order) inside Modal
   const [planPurchaseId, setPlanPurchaseId] = useState("");
+  const [comboSetId, setComboSetId] = useState("");
   const [planDeliveryDate, setPlanDeliveryDate] = useState("");
   const [orderItems, setOrderItems] = useState<DeliveryOrderItem[]>([
     defaultSampleItem,
@@ -550,20 +649,20 @@ export default function SubscribePlanOrders() {
         const formatted = list.map((item: any, i: number) => {
           const cId = String(
             item.carrier_id ??
-              item.courier_company_id ??
-              item.id ??
-              item.carrierId ??
-              item.code ??
-              item.courier_name ??
-              `carrier_${i + 1}`
+            item.courier_company_id ??
+            item.id ??
+            item.carrierId ??
+            item.code ??
+            item.courier_name ??
+            `carrier_${i + 1}`
           );
           const cName = String(
             item.carrier_name ??
-              item.courier_name ??
-              item.name ??
-              item.title ??
-              item.courier_company_name ??
-              `Carrier ${cId}`
+            item.courier_name ??
+            item.name ??
+            item.title ??
+            item.courier_company_name ??
+            `Carrier ${cId}`
           );
           const etd =
             item.expected_delivery_date ??
@@ -601,8 +700,8 @@ export default function SubscribePlanOrders() {
           // Auto set delivery date from first carrier's ETD if available
           const autoDate = parseEtdToDateString(
             firstCarrier.etd ||
-              firstCarrier.raw?.expected_delivery_date ||
-              firstCarrier.raw?.etd
+            firstCarrier.raw?.expected_delivery_date ||
+            firstCarrier.raw?.etd
           );
           if (autoDate) {
             setPlanDeliveryDate(autoDate);
@@ -651,8 +750,8 @@ export default function SubscribePlanOrders() {
         const list: PurchasePlanItem[] = Array.isArray(json.data)
           ? json.data
           : Array.isArray(json)
-          ? json
-          : [];
+            ? json
+            : [];
         setPurchasePlans(list);
 
         if (targetPlanId) {
@@ -676,18 +775,19 @@ export default function SubscribePlanOrders() {
     }
   };
 
-  // 🛒 GET API State (Product Details API: /api/admin/plan-orders/product-details)
-  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [catalogErrorMsg, setCatalogErrorMsg] = useState<string | null>(null);
+  // 🛒 GET API State (Plan Combosets API: /api/admin/plan-orders/combosets/${planId})
+  const [planComboSets, setPlanComboSets] = useState<PlanComboSetItem[]>([]);
+  const [loadingComboSets, setLoadingComboSets] = useState(false);
+  const [comboSetsErrorMsg, setComboSetsErrorMsg] = useState<string | null>(null);
 
-  // 🌐 GET API Call: Fetch Product Details from /api/admin/plan-orders/product-details
-  const fetchProductDetails = async () => {
-    setLoadingCatalog(true);
-    setCatalogErrorMsg(null);
+  // 🌐 GET API Call: Fetch Plan Combo Sets from /api/admin/plan-orders/combosets/${planId}
+  const fetchPlanComboSets = async (targetPlanId: string) => {
+    if (!targetPlanId) return;
+    setLoadingComboSets(true);
+    setComboSetsErrorMsg(null);
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/admin/plan-orders/product-details`,
+        `${API_BASE_URL}/api/admin/plan-orders/combosets/${targetPlanId}`,
         {
           method: "GET",
           credentials: "include",
@@ -698,75 +798,78 @@ export default function SubscribePlanOrders() {
         }
       );
       const json = await res.json().catch(() => ({}));
-      if (res.ok) {
-        let list: CatalogProduct[] = [];
-        if (Array.isArray(json.data)) {
-          list = json.data;
-        } else if (Array.isArray(json.products)) {
-          list = json.products;
-        } else if (Array.isArray(json.product_details)) {
-          list = json.product_details;
-        } else if (Array.isArray(json)) {
-          list = json;
-        } else if (json.data && Array.isArray(json.data.products)) {
-          list = json.data.products;
+      if (res.ok && json.success !== false) {
+        let sets: PlanComboSetItem[] = [];
+        if (json.data && Array.isArray(json.data.combosets)) {
+          sets = json.data.combosets;
+        } else if (Array.isArray(json.data)) {
+          sets = json.data;
+        } else if (Array.isArray(json.combosets)) {
+          sets = json.combosets;
         }
-        setCatalogProducts(list);
+        setPlanComboSets(sets);
+        if (sets.length > 0) {
+          const firstCombo = sets[0];
+          if (firstCombo._id) {
+            setComboSetId((prev) => prev || firstCombo._id || "");
+          }
+        }
       } else {
-        setCatalogErrorMsg(
-          json.message || `Failed to fetch product details (${res.status})`
+        setComboSetsErrorMsg(
+          json.message || `Failed to fetch plan combo sets (${res.status})`
         );
       }
     } catch (err: any) {
-      console.error("Error fetching product details GET API:", err);
-      setCatalogErrorMsg(
-        err.message || "Failed to fetch product details from server"
+      console.error("Error fetching plan combo sets GET API:", err);
+      setComboSetsErrorMsg(
+        err.message || "Failed to fetch plan combo sets from server"
       );
     } finally {
-      setLoadingCatalog(false);
+      setLoadingComboSets(false);
     }
   };
 
   useEffect(() => {
     void fetchPurchasePlans();
-    void fetchProductDetails();
   }, []);
 
-  // Helper to select a product from catalog API and populate item details
-  const handleSelectCatalogProduct = (
+  // Helper to select a product jar from plan combo sets and populate item details
+  const handleSelectComboSetItem = (
     itemIndex: number,
-    prod: CatalogProduct,
-    selectedVariant?: CatalogVariant
+    combo: PlanComboSetItem,
+    selectedProduct?: PlanComboSetProduct
   ) => {
+    if (combo._id) {
+      setComboSetId(combo._id);
+    }
     setOrderItems((prevItems) => {
       const newItems = JSON.parse(JSON.stringify(prevItems));
       const target = newItems[itemIndex];
       if (!target) return prevItems;
 
-      const prodId = prod._id || prod.id || "";
-      const prodName = prod.product_name || prod.name || "";
-      const brand = prod.brand || "ShuddhVeda Honey";
-      const variants = extractVariantsFromProduct(prod);
-      const v =
-        selectedVariant ||
-        (variants.length > 0 ? variants[0] : null);
+      const prodName = selectedProduct?.name || combo.title || "Subscription Honey Jar";
+      const imageUrl = extractComboImageUrl(combo);
 
-      const imageUrl = extractProductImageUrl(prod, v);
+      const weight = selectedProduct?.weight !== undefined ? Number(selectedProduct.weight) : 500;
+      const unit = selectedProduct?.unit || "g";
+      const prodId = selectedProduct?._id || combo._id || `combo-prod-${itemIndex}`;
+      const variantId = `var-${prodId}`;
 
-      const variantId = v?._id || v?.id || "";
-      const weight = v?.weight !== undefined ? Number(v.weight) : 250;
-      const unit = v?.unit || "g";
-      const price = v?.price !== undefined ? Number(v.price) : 299;
-      const mrp = v?.mrp !== undefined ? Number(v.mrp) : price;
-      const save = v?.save !== undefined ? Number(v.save) : Math.max(0, mrp - price);
-
+      const price = Number((selectedProduct as any)?.price || (combo as any)?.price || 0);
+      const mrp = Number((selectedProduct as any)?.mrp || (selectedProduct as any)?.originalPrice || (combo as any)?.mrp || price);
+      const save = Math.max(0, mrp - price);
       const qty = target.quantity || 1;
 
       target.product_details = {
         product: {
           _id: prodId,
           product_name: prodName,
-          brand: brand,
+          brand: combo.harvestTitle || combo.season || "ShuddhVeda Honey",
+          comboTitle: combo.title || "",
+          monthName: combo.monthName || "",
+          season: combo.season || "",
+          harvestTitle: combo.harvestTitle || "",
+          description: combo.description || "",
           image: {
             image_url: imageUrl,
           },
@@ -796,8 +899,14 @@ export default function SubscribePlanOrders() {
     setSelectedItem(item);
     setActiveTab(initialTab);
     setPlanPurchaseId(item._id);
+    setComboSetId((item as any)?.comboSetId || (item as any)?.combo_set_id || "");
     setPostSuccessResponse(null);
     setPostErrorMsg(null);
+
+    const targetPlanId = getPlanIdFromPurchaseItem(item);
+    if (targetPlanId) {
+      void fetchPlanComboSets(targetPlanId);
+    }
 
     // Auto calculate delivery date
     let dateStr = new Date().toISOString().split("T")[0];
@@ -907,17 +1016,24 @@ export default function SubscribePlanOrders() {
     });
   };
 
-  // Get live POST API payload
-  const getPostPayload = () => ({
-    planPurchaseId: planPurchaseId.trim(),
-    plan_delivery_date: planDeliveryDate.trim(),
-    carrier_id: selectedCarrierId || "",
-    length: Number(length) || 3,
-    breadth: Number(breadth) || 1,
-    height: Number(height) || 1,
-    weight: Number(weight) || 1,
-    items: orderItems,
-  });
+  // Get live POST API payload matching {{baseUrl}}/api/admin/plan-orders/create-plan-delivery-order
+  const getPostPayload = () => {
+    const fallbackComboId =
+      orderItems[0]?.product_details?.product?._id ||
+      (planComboSets.length > 0 ? planComboSets[0]._id || planComboSets[0].monthName : "");
+
+    return {
+      planPurchaseId: planPurchaseId.trim(),
+      comboSetId: comboSetId.trim() || fallbackComboId || "",
+      plan_delivery_date: planDeliveryDate.trim(),
+      carrier_id: selectedCarrierId || "",
+      length: Number(length) || 3,
+      breadth: Number(breadth) || 1,
+      height: Number(height) || 1,
+      weight: Number(weight) || 1,
+      items: orderItems,
+    };
+  };
 
   // 🚀 POST API Submit Function
   const handleCreateDeliveryOrderSubmit = async (e: React.FormEvent) => {
@@ -971,8 +1087,8 @@ export default function SubscribePlanOrders() {
       } else {
         setPostErrorMsg(
           json.message ||
-            json.error ||
-            `API error (${res.status}): ${res.statusText}`
+          json.error ||
+          `API error (${res.status}): ${res.statusText}`
         );
       }
     } catch (err: any) {
@@ -1204,12 +1320,12 @@ export default function SubscribePlanOrders() {
                   const progressPct =
                     item.totalDeliveries > 0
                       ? Math.min(
-                          100,
-                          Math.round(
-                            (item.completedDeliveries / item.totalDeliveries) *
-                              100
-                          )
+                        100,
+                        Math.round(
+                          (item.completedDeliveries / item.totalDeliveries) *
+                          100
                         )
+                      )
                       : 0;
 
                   return (
@@ -1251,17 +1367,22 @@ export default function SubscribePlanOrders() {
                       {/* Subscription Plan */}
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-2">
-                          {item.plan?.plan_image ? (
-                            <img
-                              src={item.plan.plan_image}
-                              alt={item.plan.name}
-                              className="w-8 h-8 rounded-lg object-cover border border-amber-100 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-[#E69A00] shrink-0 font-bold">
-                              <Package size={15} />
-                            </div>
-                          )}
+                          {(() => {
+                            const rawImg = item.plan?.plan_image || (item.plan as any)?.image || (item.plan as any)?.image_url;
+                            if (typeof rawImg === "string" && rawImg.trim() && !rawImg.startsWith("data:image/svg+xml") && rawImg !== DEFAULT_HONEY_IMAGE) {
+                              return (
+                                <img
+                                  src={rawImg}
+                                  alt={item.plan?.name || "Subscription Plan"}
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                                  }}
+                                  className="w-10 h-10 rounded-xl object-cover border-2 border-amber-300 shrink-0 shadow-2xs bg-amber-50"
+                                />
+                              );
+                            }
+                            return null;
+                          })()}
                           <div className="min-w-0">
                             <p className="font-bold text-gray-900 text-xs truncate">
                               {item.plan?.name || "Subscription Plan"}
@@ -1287,11 +1408,10 @@ export default function SubscribePlanOrders() {
                         </p>
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
-                              item.payment_status === "captured"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${item.payment_status === "captured"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800"
+                              }`}
                           >
                             {item.payment_status || "captured"}
                           </span>
@@ -1325,26 +1445,24 @@ export default function SubscribePlanOrders() {
                       {/* Status */}
                       <td className="py-2.5 px-3">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                            item.status?.toLowerCase() === "active"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : item.status?.toLowerCase() === "completed"
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${item.status?.toLowerCase() === "active"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : item.status?.toLowerCase() === "completed"
                               ? "bg-blue-50 text-blue-700 border border-blue-200"
                               : item.status?.toLowerCase() === "processing"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-gray-100 text-gray-600 border border-gray-200"
-                          }`}
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-gray-100 text-gray-600 border border-gray-200"
+                            }`}
                         >
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              item.status?.toLowerCase() === "active"
-                                ? "bg-emerald-500"
-                                : item.status?.toLowerCase() === "completed"
+                            className={`w-1.5 h-1.5 rounded-full ${item.status?.toLowerCase() === "active"
+                              ? "bg-emerald-500"
+                              : item.status?.toLowerCase() === "completed"
                                 ? "bg-blue-500"
                                 : item.status?.toLowerCase() === "processing"
-                                ? "bg-amber-500"
-                                : "bg-gray-400"
-                            }`}
+                                  ? "bg-amber-500"
+                                  : "bg-gray-400"
+                              }`}
                           />
                           {item.status || "Active"}
                         </span>
@@ -1399,11 +1517,10 @@ export default function SubscribePlanOrders() {
                       Purchase Order: {selectedItem.purchase_id}
                     </h2>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        selectedItem.status === "active"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${selectedItem.status === "active"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-gray-100 text-gray-700"
+                        }`}
                     >
                       {selectedItem.status}
                     </span>
@@ -1422,11 +1539,10 @@ export default function SubscribePlanOrders() {
             <div className="flex border-b border-gray-200 bg-gray-50 px-5 shrink-0 text-xs font-bold text-gray-600 gap-1 overflow-x-auto">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === "overview"
-                    ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
-                    : "border-transparent hover:text-gray-900"
-                }`}
+                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${activeTab === "overview"
+                  ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
+                  : "border-transparent hover:text-gray-900"
+                  }`}
               >
                 <Package size={15} /> Overview & Plan
               </button>
@@ -1434,44 +1550,40 @@ export default function SubscribePlanOrders() {
               {/* Create Plan Delivery Order Tab */}
               <button
                 onClick={() => setActiveTab("create_delivery")}
-                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === "create_delivery"
-                    ? "border-[#E69A00] text-white bg-[#E69A00] rounded-t-lg font-bold"
-                    : "border-transparent text-amber-700 bg-amber-50 hover:bg-amber-100"
-                }`}
+                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${activeTab === "create_delivery"
+                  ? "border-[#E69A00] text-white bg-[#E69A00] rounded-t-lg font-bold"
+                  : "border-transparent text-amber-700 bg-amber-50 hover:bg-amber-100"
+                  }`}
               >
                 <Send size={15} /> Create Plan Delivery Order
               </button>
 
               <button
                 onClick={() => setActiveTab("deliveries")}
-                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === "deliveries"
-                    ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
-                    : "border-transparent hover:text-gray-900"
-                }`}
+                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${activeTab === "deliveries"
+                  ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
+                  : "border-transparent hover:text-gray-900"
+                  }`}
               >
                 <Truck size={15} /> Deliveries ({selectedItem.deliveries?.length || 0})
               </button>
 
               <button
                 onClick={() => setActiveTab("payment")}
-                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === "payment"
-                    ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
-                    : "border-transparent hover:text-gray-900"
-                }`}
+                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${activeTab === "payment"
+                  ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
+                  : "border-transparent hover:text-gray-900"
+                  }`}
               >
                 <CreditCard size={15} /> Razorpay & Payment
               </button>
 
               <button
                 onClick={() => setActiveTab("addresses")}
-                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-                  activeTab === "addresses"
-                    ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
-                    : "border-transparent hover:text-gray-900"
-                }`}
+                className={`py-3 px-4 border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${activeTab === "addresses"
+                  ? "border-[#E69A00] text-[#E69A00] bg-white font-bold"
+                  : "border-transparent hover:text-gray-900"
+                  }`}
               >
                 <MapPin size={15} /> Shipping & Billing
               </button>
@@ -1484,18 +1596,23 @@ export default function SubscribePlanOrders() {
                 <div className="space-y-6">
                   {/* Plan Banner Card */}
                   <div className="bg-[#FFFDF9] border border-[#F2E8D9] rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      {selectedItem.plan?.plan_image ? (
-                        <img
-                          src={selectedItem.plan.plan_image}
-                          alt={selectedItem.plan.name}
-                          className="w-16 h-16 rounded-2xl object-cover border border-amber-200"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-2xl bg-amber-100 text-[#E69A00] flex items-center justify-center">
-                          <Package size={28} />
-                        </div>
-                      )}
+                    <div className="flex items-center gap-4 flex-1">
+                      {(() => {
+                        const rawImg = selectedItem.plan?.plan_image || (selectedItem.plan as any)?.image || (selectedItem.plan as any)?.image_url;
+                        if (typeof rawImg === "string" && rawImg.trim() && !rawImg.startsWith("data:image/svg+xml") && rawImg !== DEFAULT_HONEY_IMAGE) {
+                          return (
+                            <img
+                              src={rawImg}
+                              alt={selectedItem.plan?.name || "Subscription Plan"}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-300 shadow-2xs shrink-0 bg-amber-50"
+                            />
+                          );
+                        }
+                        return null;
+                      })()}
                       <div>
                         <h3 className="text-lg font-bold text-[#2D2118]">
                           {selectedItem.plan?.name || "Subscription Plan"}
@@ -1631,7 +1748,7 @@ export default function SubscribePlanOrders() {
                         Order Identification & Delivery Date
                       </h4>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                           <label className="block font-bold text-gray-700 mb-1">
                             Plan Purchase ID <span className="text-rose-500">*</span>
@@ -1642,6 +1759,20 @@ export default function SubscribePlanOrders() {
                             readOnly
                             value={planPurchaseId}
                             className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-xs font-mono font-bold text-gray-800 outline-none cursor-not-allowed select-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-gray-700 mb-1">
+                            Combo Set ID <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. 6ab79cbfda4bbc02c80022cb"
+                            value={comboSetId}
+                            onChange={(e) => setComboSetId(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-bold text-gray-800 outline-none focus:border-[#E69A00] focus:bg-white"
                           />
                         </div>
 
@@ -1707,9 +1838,8 @@ export default function SubscribePlanOrders() {
                                 </span>
                                 <ChevronDown
                                   size={14}
-                                  className={`text-[#E69A00] transition-transform duration-200 shrink-0 ${
-                                    isCarrierDropdownOpen ? "rotate-180" : ""
-                                  }`}
+                                  className={`text-[#E69A00] transition-transform duration-200 shrink-0 ${isCarrierDropdownOpen ? "rotate-180" : ""
+                                    }`}
                                 />
                               </button>
 
@@ -1730,18 +1860,17 @@ export default function SubscribePlanOrders() {
                                           // Auto sync selected courier's estimated delivery date to Plan Delivery Date input
                                           const selDate = parseEtdToDateString(
                                             carrier.etd ||
-                                              carrier.raw?.expected_delivery_date ||
-                                              carrier.raw?.etd
+                                            carrier.raw?.expected_delivery_date ||
+                                            carrier.raw?.etd
                                           );
                                           if (selDate) {
                                             setPlanDeliveryDate(selDate);
                                           }
                                         }}
-                                        className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${
-                                          isSelected
-                                            ? "bg-amber-100/70 text-amber-950 font-bold"
-                                            : "hover:bg-amber-50 text-gray-700"
-                                        }`}
+                                        className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition flex items-center justify-between cursor-pointer ${isSelected
+                                          ? "bg-amber-100/70 text-amber-950 font-bold"
+                                          : "hover:bg-amber-50 text-gray-700"
+                                          }`}
                                       >
                                         <span className="truncate pr-2">
                                           {carrier.display_title}
@@ -1861,7 +1990,7 @@ export default function SubscribePlanOrders() {
                         const isDone = Boolean(collapsedItems[idx]);
                         const hasSelectedProduct = Boolean(
                           item.product_details.product._id &&
-                            item.product_details.product.variant._id
+                          item.product_details.product.variant._id
                         );
 
                         return (
@@ -1902,107 +2031,114 @@ export default function SubscribePlanOrders() {
                               </div>
                             </div>
 
-                            {/* 🛒 AUTOMATED CATALOG PRODUCT & VARIANT SELECTOR (HIDDEN WHEN DONE IS CLICKED) */}
+                            {/* 🛒 PLAN HARVEST COMBOSET & PRODUCT SELECTOR (HIDDEN WHEN DONE IS CLICKED) */}
                             {!isDone && (
                               <div className="bg-[#FFFBF0] border border-[#F2D6A7] rounded-xl p-4 space-y-3">
                                 <div className="flex items-center justify-between border-b border-[#F2D6A7]/60 pb-2">
                                   <label className="font-bold text-[#2D2118] text-xs uppercase tracking-wider">
-                                    Select Product & Variant
+                                    Select Plan Harvest Combo & Jars
                                   </label>
                                   <div className="flex items-center gap-2">
-                                    {loadingCatalog ? (
+                                    {loadingComboSets ? (
                                       <span className="text-[10px] text-amber-700 flex items-center gap-1 font-medium">
-                                        <Loader2 size={12} className="animate-spin text-[#E69A00]" /> Loading products...
+                                        <Loader2 size={12} className="animate-spin text-[#E69A00]" /> Loading harvest combos...
                                       </span>
                                     ) : (
                                       <button
                                         type="button"
-                                        onClick={fetchProductDetails}
+                                        onClick={() => {
+                                          const pId =
+                                            selectedItem?.planId ||
+                                            (typeof selectedItem?.plan === "object" && (selectedItem?.plan as any)?._id) ||
+                                            "";
+                                          const actualPlanId = getPlanIdFromPurchaseItem(selectedItem);
+                                          if (actualPlanId || pId) void fetchPlanComboSets(actualPlanId || pId);
+                                        }}
                                         className="text-[10px] text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 underline cursor-pointer"
                                       >
-                                        <RefreshCw size={10} /> Reload Catalog
+                                        <RefreshCw size={10} /> Reload Combosets
                                       </button>
                                     )}
                                   </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                  {/* 1. Select Product Dropdown */}
+                                  {/* 1. Select Harvest Month Combo */}
                                   <div>
                                     <label className="block font-bold text-gray-800 text-[11px] mb-1">
-                                      1. Select Product
+                                      1. Select Harvest Combo ({planComboSets.length})
                                     </label>
                                     <select
                                       value={item.product_details.product._id || ""}
                                       onChange={(e) => {
                                         const selectedId = e.target.value;
-                                        const foundProd = catalogProducts.find(
-                                          (p) => (p._id || p.id) === selectedId
+                                        const foundCombo = planComboSets.find(
+                                          (c) => (c._id || c.monthName) === selectedId
                                         );
-                                        if (foundProd) {
-                                          handleSelectCatalogProduct(idx, foundProd);
+                                        if (foundCombo) {
+                                          const firstProd =
+                                            foundCombo.products && foundCombo.products.length > 0
+                                              ? foundCombo.products[0]
+                                              : undefined;
+                                          handleSelectComboSetItem(idx, foundCombo, firstProd);
                                         }
                                       }}
                                       className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
                                     >
-                                      <option value="">-- Select Product --</option>
-                                      {catalogProducts.map((prod, pIdx) => {
-                                        const id = prod._id || prod.id || `prod-${pIdx}`;
-                                        const name = prod.product_name || prod.name || "Unnamed Product";
+                                      <option value="">-- Select Month Combo Set --</option>
+                                      {planComboSets.map((combo, cIdx) => {
+                                        const id = combo._id || combo.monthName || `combo-${cIdx}`;
+                                        const label = `${combo.monthName} - ${combo.title || combo.harvestTitle || "Harvest Combo"}`;
                                         return (
                                           <option key={id} value={id}>
-                                            {name}
+                                            {label}
                                           </option>
                                         );
                                       })}
                                     </select>
                                   </div>
 
-                                  {/* 2. Select Variant / Weight Dropdown */}
+                                  {/* 2. Select Honey Jar Product */}
                                   <div>
                                     <label className="block font-bold text-gray-800 text-[11px] mb-1">
-                                      2. Select Variant / Weight
+                                      2. Select Honey Jar Product
                                     </label>
                                     {(() => {
-                                      const currentProd =
-                                        catalogProducts.find(
-                                          (p) =>
-                                            String(p._id || p.id || "") ===
+                                      const currentCombo =
+                                        planComboSets.find(
+                                          (c) =>
+                                            String(c._id || c.monthName || "") ===
                                             String(item.product_details.product._id || "")
-                                        ) || (catalogProducts.length > 0 ? catalogProducts[0] : null);
+                                        ) || (planComboSets.length > 0 ? planComboSets[0] : null);
 
-                                      const variants = currentProd
-                                        ? extractVariantsFromProduct(currentProd)
-                                        : [];
+                                      const products = currentCombo?.products || [];
 
                                       return (
-                                        <div className="space-y-1.5">
-                                          <select
-                                            value={item.product_details.product.variant._id || ""}
-                                            onChange={(e) => {
-                                              const variantId = e.target.value;
-                                              const foundVariant = variants.find(
-                                                (v) => String(v._id || v.id) === String(variantId)
-                                              );
-                                              if (foundVariant && currentProd) {
-                                                handleSelectCatalogProduct(idx, currentProd, foundVariant);
-                                              }
-                                            }}
-                                            className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
-                                          >
-                                            <option value="">-- Select Variant --</option>
-                                            {variants.map((v, vIdx) => (
-                                              <option key={v._id || v.id || vIdx} value={v._id || v.id}>
-                                                {v.weight}{v.unit} - ₹{v.price}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
+                                        <select
+                                          value={item.product_details.product.product_name || ""}
+                                          onChange={(e) => {
+                                            const prodName = e.target.value;
+                                            const foundProd = products.find(
+                                              (p: any) => p.name === prodName
+                                            );
+                                            if (currentCombo) {
+                                              handleSelectComboSetItem(idx, currentCombo, foundProd);
+                                            }
+                                          }}
+                                          className="w-full px-2.5 py-2 bg-white border border-[#F2D6A7] rounded-lg text-xs font-semibold text-gray-800 outline-none focus:border-[#E69A00] shadow-2xs"
+                                        >
+                                          <option value="">-- Select Honey Jar --</option>
+                                          {products.map((p: any, pIdx: number) => (
+                                            <option key={p._id || pIdx} value={p.name}>
+                                              {p.name} ({p.weight}{p.unit})
+                                            </option>
+                                          ))}
+                                        </select>
                                       );
                                     })()}
                                   </div>
 
-                                  {/* 3. Quantity Input */}
+                                  {/* 3. Jar Quantity */}
                                   <div>
                                     <label className="block font-bold text-gray-800 text-[11px] mb-1">
                                       3. Jar Quantity
@@ -2023,26 +2159,103 @@ export default function SubscribePlanOrders() {
                                   </div>
                                 </div>
 
-                                {/* 🟢 Done Button to hide selection controls */}
-                                <div className="flex items-center justify-end pt-2 border-t border-[#F2D6A7]/60">
+                                {/* 🟢 Done Button & Visual Cards */}
+                                <div className="flex items-center justify-between pt-2 border-t border-[#F2D6A7]/60">
+                                  <span className="text-[11px] text-amber-900 font-medium">
+                                    {planComboSets.length > 0 ? "Or click a harvest card below to select:" : ""}
+                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       if (!hasSelectedProduct) {
-                                        alert("Please select a product and variant first!");
+                                        alert("Please select a month combo set and product jar first!");
                                         return;
                                       }
                                       toggleItemDone(idx);
                                     }}
-                                    className="px-4 py-1.5 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold text-xs rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                                    className="px-4 py-1.5 bg-[#E69A00] hover:bg-[#D48D00] text-white font-bold text-xs rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
                                   >
                                     <Check size={14} /> Done
                                   </button>
                                 </div>
 
-                                {catalogErrorMsg && (
+                                {/* 🖼️ VISUAL HARVEST CARDS GRID WITH REAL IMAGES & DETAILS */}
+                                {planComboSets.length > 0 && (
+                                  <div className="pt-2 border-t border-[#F2D6A7]/60 space-y-2">
+                                    <label className="font-bold text-xs text-amber-950 block">
+                                      Harvest Combos Image Gallery ({planComboSets.length} Months):
+                                    </label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                      {planComboSets.map((combo, cIdx) => {
+                                        const imgUrl = extractComboImageUrl(combo);
+                                        const isSelectedCombo =
+                                          String(item.product_details.product._id || "") ===
+                                          String(combo._id || combo.monthName || "");
+
+                                        return (
+                                          <div
+                                            key={combo._id || cIdx}
+                                            onClick={() => {
+                                              const firstProd =
+                                                combo.products && combo.products.length > 0
+                                                  ? combo.products[0]
+                                                  : undefined;
+                                              handleSelectComboSetItem(idx, combo, firstProd);
+                                            }}
+                                            className={`cursor-pointer rounded-xl border-2 overflow-hidden transition-all duration-200 bg-white shadow-2xs hover:shadow-md flex flex-col justify-between ${isSelectedCombo
+                                              ? "border-[#E69A00] ring-2 ring-amber-300 bg-amber-50/40"
+                                              : "border-gray-200 hover:border-amber-300"
+                                              }`}
+                                          >
+                                            <div className="relative h-28 w-full bg-amber-100/50 overflow-hidden">
+                                              <img
+                                                src={imgUrl}
+                                                alt={combo.title || combo.monthName}
+                                                onError={(e) => {
+                                                  (e.currentTarget as HTMLImageElement).src = DEFAULT_HONEY_IMAGE;
+                                                }}
+                                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                                              />
+                                              <span className="absolute top-2 left-2 bg-[#2D2118] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase shadow-xs">
+                                                {combo.monthName}
+                                              </span>
+                                              {combo.season && (
+                                                <span className="absolute top-2 right-2 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                                                  {combo.season}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <div className="p-2.5 space-y-1">
+                                              <h6 className="font-bold text-xs text-gray-900 line-clamp-1">
+                                                {combo.title || combo.harvestTitle}
+                                              </h6>
+                                              {combo.products && combo.products.length > 0 && (
+                                                <p className="text-[10px] text-gray-500 line-clamp-1">
+                                                  Jars: {combo.products.map((p) => p.name).join(", ")}
+                                                </p>
+                                              )}
+                                              <div className="pt-1 flex items-center justify-between">
+                                                <span
+                                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isSelectedCombo
+                                                    ? "bg-[#E69A00] text-white"
+                                                    : "bg-gray-100 text-gray-700 hover:bg-amber-100"
+                                                    }`}
+                                                >
+                                                  {isSelectedCombo ? "Selected ✓" : "Select Combo"}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {comboSetsErrorMsg && (
                                   <p className="text-[10px] text-rose-600 font-medium pt-1">
-                                    Catalog API notice: {catalogErrorMsg}
+                                    Plan Combosets API notice: {comboSetsErrorMsg}
                                   </p>
                                 )}
                               </div>
@@ -2050,11 +2263,11 @@ export default function SubscribePlanOrders() {
 
                             {/* 📋 AUTO-FILLED PRODUCT INFORMATION CARD (ALWAYS VISIBLE WHEN SELECTED, OR PREVIEWED) */}
                             {hasSelectedProduct && (
-                              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                              <div className="bg-white border border-amber-200/80 rounded-xl p-4 space-y-3 shadow-2xs">
+                                <div className="flex items-center justify-between border-b border-amber-100 pb-2">
                                   <span className="font-bold text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
                                     <CheckCircle2 size={15} className="text-emerald-600" />
-                                    Product Details
+                                    Selected Harvest & Product Details
                                   </span>
 
                                   {isDone && (
@@ -2068,21 +2281,55 @@ export default function SubscribePlanOrders() {
                                   )}
                                 </div>
 
-                                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                <div className="flex flex-col md:flex-row items-start justify-between gap-4">
                                   {/* Product Info with Thumbnail Image */}
-                                  <div className="flex items-center gap-3">
-                                    {item.product_details.product.image?.image_url ? (
+                                  <div className="flex items-start gap-3 flex-1">
+                                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 border-amber-300 shadow-sm shrink-0 bg-amber-50">
                                       <img
-                                        src={item.product_details.product.image.image_url}
+                                        src={extractComboImageUrl(
+                                          item.product_details.product.image?.image_url ||
+                                          item.product_details.product.image ||
+                                          item.product_details.product
+                                        )}
                                         alt={item.product_details.product.product_name || "Product"}
-                                        className="w-14 h-14 object-cover rounded-lg border border-amber-200 shadow-2xs shrink-0"
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).src = DEFAULT_HONEY_IMAGE;
+                                        }}
+                                        className="w-full h-full object-cover"
                                       />
-                                    ) : null}
-                                    <div className="space-y-1">
-                                      <h5 className="font-bold text-gray-900 text-sm">
-                                        {item.product_details.product.product_name || "Select a Product"}
-                                      </h5>
+                                    </div>
+                                    <div className="space-y-1.5 flex-1">
                                       <div className="flex items-center gap-2 flex-wrap">
+                                        {(item.product_details.product as any).monthName && (
+                                          <span className="px-2.5 py-0.5 bg-[#2D2118] text-white rounded-full text-[10px] font-extrabold uppercase shadow-2xs">
+                                            {(item.product_details.product as any).monthName} Harvest
+                                          </span>
+                                        )}
+                                        {(item.product_details.product as any).season && (
+                                          <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-extrabold shadow-2xs">
+                                            {(item.product_details.product as any).season}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <h5 className="font-bold text-gray-900 text-sm leading-snug">
+                                        {item.product_details.product.product_name || "Selected Product"}
+                                      </h5>
+
+                                      {(item.product_details.product as any).comboTitle &&
+                                        (item.product_details.product as any).comboTitle !== item.product_details.product.product_name && (
+                                          <p className="text-[11px] font-semibold text-amber-800">
+                                            {(item.product_details.product as any).comboTitle}
+                                          </p>
+                                        )}
+
+                                      {(item.product_details.product as any).description && (
+                                        <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                                          {(item.product_details.product as any).description}
+                                        </p>
+                                      )}
+
+                                      <div className="pt-1 flex items-center gap-2">
                                         <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">
                                           Weight: {item.product_details.product.variant.weight} {item.product_details.product.variant.unit || "g"}
                                         </span>
@@ -2090,24 +2337,17 @@ export default function SubscribePlanOrders() {
                                     </div>
                                   </div>
 
-                                  {/* Price & Amount Breakdown */}
-                                  <div className="bg-[#FFFDF9] border border-[#F2E8D9] p-3 rounded-xl min-w-[210px] text-right space-y-1">
-                                    <div className="flex items-center justify-between text-xs gap-3">
-                                      <span className="text-gray-500 font-medium">Unit Price:</span>
-                                      <span className="font-bold text-gray-900">₹{item.product_details.product.variant.price}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-xs gap-3">
-                                      <span className="text-gray-500 font-medium">Unit MRP:</span>
-                                      <span className="text-gray-400 line-through font-medium">₹{item.product_details.product.variant.mrp}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-xs gap-3">
-                                      <span className="text-gray-500 font-medium">Discount / Jar:</span>
-                                      <span className="font-bold text-blue-700">₹{item.product_details.product.variant.save}</span>
-                                    </div>
-                                    <div className="border-t border-[#F2E8D9] pt-1.5 mt-1 flex items-center justify-between text-xs gap-3">
-                                      <span className="font-bold text-gray-800">Total ({item.quantity} Jar):</span>
-                                      <span className="font-bold text-emerald-700 text-sm">₹{item.product_details.totalAmount}</span>
-                                    </div>
+                                  {/* Delivery Quantity & Jar Details */}
+                                  <div className="bg-[#FFFDF9] border border-[#F2E8D9] p-3.5 rounded-xl min-w-[180px] text-right space-y-1.5 shrink-0 flex flex-col justify-center items-end">
+                                    <span className="text-[10px] uppercase font-extrabold text-amber-800 tracking-wider">
+                                      Delivery Quantity
+                                    </span>
+                                    <p className="text-base font-extrabold text-gray-900">
+                                      {item.quantity} Jar{item.quantity > 1 ? "s" : ""}
+                                    </p>
+                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                      Net Weight: {item.product_details.product.variant.weight * item.quantity} {item.product_details.product.variant.unit || "g"}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
@@ -2164,13 +2404,12 @@ export default function SubscribePlanOrders() {
                                 Delivery Batch #{del.deliveryNumber}
                               </span>
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                  del.status === "processing"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : del.status === "delivered"
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${del.status === "processing"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : del.status === "delivered"
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-gray-100 text-gray-700"
-                                }`}
+                                  }`}
                               >
                                 {del.status}
                               </span>
