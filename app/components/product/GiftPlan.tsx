@@ -563,26 +563,21 @@ export default function GiftPlanManagement() {
       if (imageFiles.length > 0 && targetComboId) {
         setStepStatusMsg("Uploading image files...");
         const formData = new FormData();
-        const fieldName = editingComboId ? "image" : "images";
         imageFiles.forEach((file) => {
-          formData.append(fieldName, file);
+          formData.append("images", file);
         });
 
-        const imgEndpoint = editingComboId
-          ? `${API_BASE_URL}/api/combo/products/update/comboProduct-image/${targetComboId}`
-          : `${API_BASE_URL}/api/combo/products/image-uploads/${targetComboId}`;
-
-        const imgMethod = editingComboId ? "PUT" : "POST";
+        const imgEndpoint = `${API_BASE_URL}/api/combo/products/image-uploads/${targetComboId}`;
 
         const imgRes = await fetch(imgEndpoint, {
-          method: imgMethod,
+          method: "POST",
           credentials: "include",
           body: formData,
         });
 
-        if (!imgRes.ok) {
-          const imgErr = await imgRes.json().catch(() => ({}));
-          console.warn("Image upload notification:", imgErr);
+        const imgJson = await imgRes.json().catch(() => ({}));
+        if (!imgRes.ok && !imgJson.success) {
+          console.warn("Image upload notification error:", imgJson);
         }
       }
 
