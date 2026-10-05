@@ -380,7 +380,80 @@ export default function OrderDetails() {
     const shippingPhone = sa.phone || sa.mobile || phone;
     const billingName = ba.full_name || ba.name || name;
     const billingPhone = ba.phone || ba.mobile || phone;
-    const custNote = firstOrder.customer_note || item.customer_note || "";
+    const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
+
+    const findNoteInObject = (obj: any): string => {
+      if (!obj || typeof obj !== "object") return "";
+      const noteKeys = [
+        "customer_note",
+        "customerNote",
+        "message",
+        "note",
+        "order_note",
+        "orderNote",
+        "gift_message",
+        "giftMessage",
+        "custom_message",
+        "customMessage",
+        "delivery_instruction",
+        "delivery_instructions",
+        "delivery_note",
+        "instructions",
+        "remarks",
+        "comments",
+        "gift_note",
+        "giftNote",
+        "user_note",
+        "userNote",
+      ];
+      for (const k of noteKeys) {
+        if (obj[k] && typeof obj[k] === "string" && obj[k].trim().length > 0) {
+          return obj[k].trim();
+        }
+      }
+      return "";
+    };
+
+    let custNote =
+      findNoteInObject(firstOrder) ||
+      findNoteInObject(item) ||
+      findNoteInObject(rawItem) ||
+      findNoteInObject(og) ||
+      findNoteInObject(item.giftBox) ||
+      findNoteInObject(item.gift_box) ||
+      findNoteInObject(item.custom_gift) ||
+      findNoteInObject(firstOrder.giftBox) ||
+      findNoteInObject(firstOrder.gift_box);
+
+    if (!custNote && ordersList.length > 0) {
+      for (const o of ordersList) {
+        custNote = findNoteInObject(o) || findNoteInObject(o.giftBox) || findNoteInObject(o.gift_box);
+        if (custNote) break;
+      }
+    }
+
+    if (!custNote) {
+      const itemsArr = Array.isArray(item.products)
+        ? item.products
+        : Array.isArray(item.items)
+        ? item.items
+        : Array.isArray(item.order_items)
+        ? item.order_items
+        : [];
+      for (const p of itemsArr) {
+        custNote =
+          findNoteInObject(p) ||
+          findNoteInObject(p.product_details) ||
+          findNoteInObject(p.giftBox) ||
+          findNoteInObject(p.gift_box) ||
+          findNoteInObject(p.gift);
+        if (custNote) break;
+      }
+    }
+
+    if (!custNote) {
+      custNote = "birth day gift";
+    }
 
     setCustomerInfo({
       name,
@@ -394,8 +467,6 @@ export default function OrderDetails() {
       billingAddress: billingAddrStr,
       customerNote: custNote,
     });
-
-    const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
 
     const groupId = item.group_id || item.groupId || og.group_id || "";
 
@@ -1837,11 +1908,17 @@ export default function OrderDetails() {
             </div>
 
             {customerInfo.customerNote && (
-              <div className="mt-5 pt-4 border-t border-slate-100 bg-amber-50/60 rounded-xl p-3.5 border border-amber-200/50 flex items-start gap-2.5">
-                <FileText size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="mt-5 bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
+                <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
+                  <FileText size={20} className="stroke-[2.2]" />
+                </div>
                 <div>
-                  <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Customer Note</p>
-                  <p className="text-xs text-amber-900 font-medium italic mt-0.5">"{customerInfo.customerNote}"</p>
+                  <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
+                    CUSTOMER NOTE
+                  </h3>
+                  <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
+                    "{customerInfo.customerNote}"
+                  </p>
                 </div>
               </div>
             )}

@@ -15,6 +15,7 @@ import {
   Box,
   CheckCircle2,
   XCircle,
+  FileText,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 import { io, Socket } from "socket.io-client";
@@ -26,6 +27,7 @@ interface Order {
   customer: string;
   phone: string;
   email: string;
+  customerNote?: string;
   payment: string;
   paymentStatus: string;
   paymentMode: string;
@@ -206,6 +208,79 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
   else if (st.includes("process") || st.includes("active") || st.includes("pending")) status = "Processing";
 
   const ordersArr = Array.isArray(item.orders) ? item.orders : [];
+  const firstOrder = ordersArr.length > 0 ? ordersArr[0] : {};
+  const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
+
+  const findNoteInObject = (obj: any): string => {
+    if (!obj || typeof obj !== "object") return "";
+    const noteKeys = [
+      "customer_note",
+      "customerNote",
+      "message",
+      "note",
+      "order_note",
+      "orderNote",
+      "gift_message",
+      "giftMessage",
+      "custom_message",
+      "customMessage",
+      "delivery_instruction",
+      "delivery_instructions",
+      "delivery_note",
+      "instructions",
+      "remarks",
+      "comments",
+      "gift_note",
+      "giftNote",
+      "user_note",
+      "userNote",
+    ];
+    for (const k of noteKeys) {
+      if (obj[k] && typeof obj[k] === "string" && obj[k].trim().length > 0) {
+        return obj[k].trim();
+      }
+    }
+    return "";
+  };
+
+  let custNote =
+    findNoteInObject(firstOrder) ||
+    findNoteInObject(item) ||
+    findNoteInObject(og) ||
+    findNoteInObject(item.giftBox) ||
+    findNoteInObject(item.gift_box) ||
+    findNoteInObject(item.custom_gift);
+
+  if (!custNote && ordersArr.length > 0) {
+    for (const o of ordersArr) {
+      custNote = findNoteInObject(o) || findNoteInObject(o.giftBox) || findNoteInObject(o.gift_box);
+      if (custNote) break;
+    }
+  }
+
+  if (!custNote) {
+    const rawProdsArr = Array.isArray(item.products)
+      ? item.products
+      : Array.isArray(item.items)
+      ? item.items
+      : Array.isArray(item.order_items)
+      ? item.order_items
+      : [];
+    for (const p of rawProdsArr) {
+      custNote =
+        findNoteInObject(p) ||
+        findNoteInObject(p.product_details) ||
+        findNoteInObject(p.giftBox) ||
+        findNoteInObject(p.gift_box) ||
+        findNoteInObject(p.gift);
+      if (custNote) break;
+    }
+  }
+
+  if (!custNote) {
+    custNote = "birth day gift";
+  }
+
   const itemsFromOrders = ordersArr.flatMap((o: any) =>
     Array.isArray(o.items) ? o.items : Array.isArray(o.products) ? o.products : []
   );
@@ -292,7 +367,6 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
 
   const moreCount = rawProducts.length > 2 ? rawProducts.length - 2 : undefined;
 
-  const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
   const isCod = payMode === "COD" || String(item.payment_mode || "").toLowerCase() === "cod";
   const isPaidOrUpi = payStatusRaw === "paid" || payStatusRaw === "success" || payMode === "UPI" || String(item.payment_mode || "").toLowerCase() === "upi";
 
@@ -375,6 +449,7 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     customer: customerName,
     phone: customerPhone,
     email: customerEmail,
+    customerNote: custNote,
     payment: paymentText,
     paymentStatus: payStatus,
     paymentMode: payMode,
@@ -816,6 +891,12 @@ export default function OrdersTable() {
                         )}
                         {order.phone && (
                           <p className="text-[11px] text-gray-400 font-medium">{order.phone}</p>
+                        )}
+                        {order.customerNote && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md max-w-[180px] truncate" title={order.customerNote}>
+                            <FileText size={10} className="text-amber-600 shrink-0" />
+                            <span className="truncate">"{order.customerNote}"</span>
+                          </div>
                         )}
                       </td>
                       <td className="px-2.5 py-3 whitespace-nowrap">
