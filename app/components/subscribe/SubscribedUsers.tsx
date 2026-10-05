@@ -692,45 +692,6 @@ export default function SubscribedUsers() {
                   </span>
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                {selectedUser.email ? (
-                  <a
-                    href={`mailto:${selectedUser.email}`}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-xl text-xs font-semibold transition-all"
-                  >
-                    <Mail size={14} />
-                    <span>Send Email</span>
-                  </a>
-                ) : (
-                  <button
-                    disabled
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-100 text-gray-400 rounded-xl text-xs font-semibold cursor-not-allowed"
-                  >
-                    <Mail size={14} />
-                    <span>No Email</span>
-                  </button>
-                )}
-
-                {selectedUser.mobile ? (
-                  <a
-                    href={`tel:${selectedUser.mobile}`}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-xs font-semibold transition-all"
-                  >
-                    <Phone size={14} />
-                    <span>Call User</span>
-                  </a>
-                ) : (
-                  <button
-                    disabled
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 bg-gray-100 text-gray-400 rounded-xl text-xs font-semibold cursor-not-allowed"
-                  >
-                    <Phone size={14} />
-                    <span>No Mobile</span>
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Modal Footer */}
