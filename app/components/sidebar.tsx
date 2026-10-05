@@ -67,7 +67,8 @@ const navItems: NavItem[] = [
     subItems: [
       { label: "Subscribe Plan Update", href: "/subscribe" },
       { label: "Subscribe Plan Order", href: "/subscribe/delivery-order" },
-      { label: "Subscribe User", href: "/subscribe/subscribers" },
+      { label: "User Email", href: "/subscribe/subscribers/email-only" },
+      { label: "User Detail", href: "/subscribe/subscribers/detailed" },
     ],
   },
   // { label: "Influencer Connects", href: "/influencer-connects", icon: Users, chevron: false, keyword: "influencer" },
