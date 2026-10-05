@@ -284,7 +284,7 @@ export default function DetailedSubscribers() {
       </div>
 
       {/* Overview Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -316,23 +316,6 @@ export default function DetailedSubscribers() {
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
             <UserCheck size={24} />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Search Filtered
-            </p>
-            <h3 className="text-2xl font-bold text-gray-900 mt-1">
-              {filteredSubscribers.length}
-            </h3>
-            <p className="text-xs text-gray-500 font-medium mt-1">
-              {searchTerm ? `Matching "${searchTerm}"` : "Showing all detailed records"}
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Search size={24} />
           </div>
         </div>
       </div>
