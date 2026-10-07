@@ -13,6 +13,63 @@ export function findVerificationId(data: any): string | null {
   );
 }
 
+// Get stored session token from localStorage or Cookies
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const lsToken =
+    localStorage.getItem("admin_token") ||
+    localStorage.getItem("sudhveda_token") ||
+    localStorage.getItem("token");
+  if (lsToken) return lsToken;
+
+  const cookieMatch = document.cookie.match(
+    /(?:^|;\s*)(?:admin_token|sudhveda_token|token)=([^;]*)/
+  );
+  return cookieMatch ? cookieMatch[1] : null;
+}
+
+// Check if JWT token is expired
+export function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split(".");
+    // If not a standard 3-part JWT string, assume valid client-side (rely on server 401 response)
+    if (parts.length !== 3) return false;
+
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+
+    const payload = JSON.parse(jsonPayload);
+    if (payload && typeof payload.exp === "number") {
+      // payload.exp is UNIX timestamp in seconds
+      const currentTime = Math.floor(Date.now() / 1000);
+      // Give a 5-second buffer before actual expiration
+      return payload.exp <= currentTime + 5;
+    }
+  } catch (e) {
+    console.warn("Could not decode JWT payload:", e);
+  }
+  return false;
+}
+
+// Get valid token or clear session if expired
+export function getValidToken(): string | null {
+  const token = getStoredToken();
+  if (!token) return null;
+  if (isTokenExpired(token)) {
+    clearSession();
+    return null;
+  }
+  return token;
+}
+
 // Session Saving Utility
 export function saveSession(sessionData: { user: any; raw?: any }) {
   if (typeof window !== "undefined") {
@@ -42,6 +99,9 @@ export function clearSession() {
     localStorage.removeItem("token");
     document.cookie = "admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
     document.cookie = "sudhveda_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+
+    // Dispatch custom event for reactive UI updates across the app
+    window.dispatchEvent(new Event("auth:logout"));
   }
 }
 

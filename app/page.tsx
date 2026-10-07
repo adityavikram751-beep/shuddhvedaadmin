@@ -11,7 +11,7 @@ import {
   ArrowLeft,
   Lock,
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/auth";
+import { API_BASE_URL, getStoredToken, isTokenExpired, clearSession } from "@/lib/auth";
 
 function AdminLoginForm() {
   const router = useRouter();
@@ -29,16 +29,14 @@ function AdminLoginForm() {
   // Check if user is already logged in on page load
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const token =
-        localStorage.getItem("admin_token") ||
-        localStorage.getItem("sudhveda_token") ||
-        localStorage.getItem("token") ||
-        (document.cookie.match(/(?:^|;\s*)(?:admin_token|sudhveda_token|token)=([^;]*)/)?.[1] || null);
+      const token = getStoredToken();
 
-      if (token) {
+      if (token && !isTokenExpired(token)) {
         const redirectTo = searchParams.get("redirect") || "/dashboard";
         const targetUrl = redirectTo.startsWith("/") ? redirectTo : "/dashboard";
         router.replace(targetUrl);
+      } else if (token && isTokenExpired(token)) {
+        clearSession();
       }
     }
   }, [router, searchParams]);
@@ -177,6 +175,13 @@ function AdminLoginForm() {
         <p className="text-center text-xs font-semibold tracking-widest text-[#B97B00] uppercase mt-1 mb-8">
           Admin Control Center
         </p>
+
+        {searchParams.get("expired") === "true" && (
+          <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-semibold flex items-center gap-2 shadow-sm">
+            <Lock size={16} className="shrink-0 text-amber-600" />
+            <span>Session expired. Please log in again to continue.</span>
+          </div>
+        )}
 
         {/* STEP 1: EMAIL ENTRY */}
         {step === "email" ? (
