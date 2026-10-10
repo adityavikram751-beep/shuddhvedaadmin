@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { API_BASE_URL, clearSession } from "@/lib/auth";
+import { playNotificationVoice } from "@/lib/notificationVoice";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -75,6 +76,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
+  const knownNotifIdsRef = useRef<Set<string>>(new Set());
+  const initialFetchDoneRef = useRef(false);
+
   const [adminName, setAdminName] = useState("Admin User");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminImage, setAdminImage] = useState("");
@@ -124,7 +128,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }, []);
 
   // Fetch Notifications
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (isBackgroundPoll = false) => {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("sudhveda_token") : null;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -157,6 +161,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
         }));
       }
 
+      // Check if new unread notification arrived during background polling
+      if (initialFetchDoneRef.current && isBackgroundPoll) {
+        const newUnread = systemNotifs.find(
+          (n) => !n.isRead && !knownNotifIdsRef.current.has(n.id)
+        );
+        if (newUnread) {
+          void playNotificationVoice(newUnread.id);
+        }
+      }
+
+      // Record known IDs
+      systemNotifs.forEach((n) => knownNotifIdsRef.current.add(n.id));
+      initialFetchDoneRef.current = true;
       setNotifications(systemNotifs);
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
@@ -165,6 +182,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   useEffect(() => {
     void fetchNotifications();
+
+    // Background poll every 25 seconds as backup
+    const interval = setInterval(() => {
+      void fetchNotifications(true);
+    }, 25000);
+
+    return () => clearInterval(interval);
   }, [pathname]);
 
   // Real-time Socket.io
@@ -178,8 +202,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
       socket.emit("join-admin-room");
     });
 
-    const handleNewNotification = () => {
-      fetchNotifications();
+    const handleNewNotification = (data?: any) => {
+      const notifId = data?.id || data?._id || data?.notification?._id;
+      void playNotificationVoice(notifId ? String(notifId) : undefined);
+      void fetchNotifications();
     };
 
     const handleNewOrder = (data: any) => {
@@ -203,6 +229,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
         time: orderDate,
         isRead: false,
       };
+
+      // Announce voice alert for new incoming order
+      void playNotificationVoice(newNotif.id);
 
       setNotifications((prev) => [newNotif, ...prev]);
 
