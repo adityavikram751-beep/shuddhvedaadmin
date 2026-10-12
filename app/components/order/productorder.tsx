@@ -15,7 +15,6 @@ import {
   Box,
   CheckCircle2,
   XCircle,
-  FileText,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 import { io, Socket } from "socket.io-client";
@@ -275,10 +274,6 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
         findNoteInObject(p.gift);
       if (custNote) break;
     }
-  }
-
-  if (!custNote) {
-    custNote = "birth day gift";
   }
 
   const itemsFromOrders = ordersArr.flatMap((o: any) =>
@@ -891,12 +886,6 @@ export default function OrdersTable() {
                         )}
                         {order.phone && (
                           <p className="text-[11px] text-gray-400 font-medium">{order.phone}</p>
-                        )}
-                        {order.customerNote && (
-                          <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md max-w-[180px] truncate" title={order.customerNote}>
-                            <FileText size={10} className="text-amber-600 shrink-0" />
-                            <span className="truncate">"{order.customerNote}"</span>
-                          </div>
                         )}
                       </td>
                       <td className="px-2.5 py-3 whitespace-nowrap">

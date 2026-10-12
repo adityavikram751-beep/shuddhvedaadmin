@@ -27,6 +27,7 @@ import {
   ChevronDown,
   Check,
   X,
+  Gift,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -46,6 +47,7 @@ interface Product {
   orderId?: string;
   orderStatus?: string;
   isCancelled?: boolean;
+  giftMessage?: string;
 }
 
 const defaultProducts: Product[] = [
@@ -94,6 +96,7 @@ export default function OrderDetails() {
     billingPhone?: string;
     billingAddress: string;
     customerNote?: string;
+    giftMessage?: string;
   }>({
     name: "",
     phone: "",
@@ -105,6 +108,7 @@ export default function OrderDetails() {
     billingPhone: "",
     billingAddress: "",
     customerNote: "",
+    giftMessage: "",
   });
 
   const [orderAmounts, setOrderAmounts] = useState<{
@@ -382,77 +386,172 @@ export default function OrderDetails() {
     const billingPhone = ba.phone || ba.mobile || phone;
     const og = typeof item.order_group_id === "object" && item.order_group_id ? item.order_group_id : {};
 
-    const findNoteInObject = (obj: any): string => {
-      if (!obj || typeof obj !== "object") return "";
-      const noteKeys = [
-        "customer_note",
-        "customerNote",
-        "message",
-        "note",
-        "order_note",
-        "orderNote",
-        "gift_message",
-        "giftMessage",
-        "custom_message",
-        "customMessage",
-        "delivery_instruction",
-        "delivery_instructions",
-        "delivery_note",
-        "instructions",
-        "remarks",
-        "comments",
-        "gift_note",
-        "giftNote",
-        "user_note",
-        "userNote",
-      ];
-      for (const k of noteKeys) {
-        if (obj[k] && typeof obj[k] === "string" && obj[k].trim().length > 0) {
-          return obj[k].trim();
-        }
-      }
-      return "";
-    };
+    // Parse raw products list first so messages can be extracted from items/product_details
+    let rawProds: any[] = [];
+    if (ordersList.length > 0) {
+      rawProds = ordersList.flatMap((o: any) => {
+        const isCancelledOrder =
+          cancelledOrders.some((co: any) => (co._id && co._id === o._id) || (co.order_id && co.order_id === o.order_id)) ||
+          String(o.order_status || "").toLowerCase().includes("cancel");
+        const orderStatusStr = o.order_status || (isCancelledOrder ? "cancelled" : "processing");
+        const orderIdStr = o.order_id || "";
 
-    let custNote =
-      findNoteInObject(firstOrder) ||
-      findNoteInObject(item) ||
-      findNoteInObject(rawItem) ||
-      findNoteInObject(og) ||
-      findNoteInObject(item.giftBox) ||
-      findNoteInObject(item.gift_box) ||
-      findNoteInObject(item.custom_gift) ||
-      findNoteInObject(firstOrder.giftBox) ||
-      findNoteInObject(firstOrder.gift_box);
+        const itemsArr = Array.isArray(o.items)
+          ? o.items
+          : Array.isArray(o.products)
+            ? o.products
+            : Array.isArray(o.order_items)
+              ? o.order_items
+              : [];
 
-    if (!custNote && ordersList.length > 0) {
-      for (const o of ordersList) {
-        custNote = findNoteInObject(o) || findNoteInObject(o.giftBox) || findNoteInObject(o.gift_box);
-        if (custNote) break;
-      }
-    }
-
-    if (!custNote) {
-      const itemsArr = Array.isArray(item.products)
+        return itemsArr.map((it: any) => ({
+          ...it,
+          _parentOrderId: orderIdStr,
+          _parentOrderStatus: orderStatusStr,
+          _parentIsCancelled: isCancelledOrder,
+        }));
+      });
+    } else {
+      rawProds = Array.isArray(item.products)
         ? item.products
         : Array.isArray(item.items)
-        ? item.items
-        : Array.isArray(item.order_items)
-        ? item.order_items
-        : [];
-      for (const p of itemsArr) {
-        custNote =
-          findNoteInObject(p) ||
-          findNoteInObject(p.product_details) ||
-          findNoteInObject(p.giftBox) ||
-          findNoteInObject(p.gift_box) ||
-          findNoteInObject(p.gift);
-        if (custNote) break;
+          ? item.items
+          : Array.isArray(item.order_items)
+            ? item.order_items
+            : Array.isArray(item.product_details)
+              ? item.product_details
+              : item.plan
+                ? [item.plan]
+                : [];
+    }
+
+    // 1. Extract Gift Message / Order Message (from product_details.message, items, giftBox, or root)
+    let giftMsg = "";
+    for (const p of rawProds) {
+      const pd = p.product_details || p.productDetails || {};
+      const gBox = p.giftBox || p.gift_box || p.custom_gift || pd.giftBox || pd.gift_box || pd.custom_gift || {};
+      const cand =
+        pd.message ||
+        pd.gift_message ||
+        pd.giftMessage ||
+        pd.custom_message ||
+        pd.note ||
+        p.message ||
+        p.gift_message ||
+        p.giftMessage ||
+        p.custom_message ||
+        p.note ||
+        gBox.message ||
+        gBox.gift_message ||
+        gBox.giftMessage;
+      if (typeof cand === "string" && cand.trim().length > 0) {
+        giftMsg = cand.trim();
+        break;
       }
     }
 
-    if (!custNote) {
-      custNote = "birth day gift";
+    if (!giftMsg) {
+      for (const o of ordersList) {
+        const oGBox = o.giftBox || o.gift_box || o.custom_gift || {};
+        const oMsg =
+          o.message ||
+          o.gift_message ||
+          o.giftMessage ||
+          o.custom_message ||
+          oGBox.message ||
+          oGBox.gift_message ||
+          oGBox.giftMessage;
+        if (typeof oMsg === "string" && oMsg.trim().length > 0) {
+          giftMsg = oMsg.trim();
+          break;
+        }
+      }
+    }
+
+    if (!giftMsg) {
+      const rootCandidates = [item, rawItem, firstOrder, og];
+      for (const r of rootCandidates) {
+        if (!r || typeof r !== "object") continue;
+        const rMsg =
+          r.message ||
+          r.gift_message ||
+          r.giftMessage ||
+          r.custom_message ||
+          r.giftBox?.message ||
+          r.gift_box?.message ||
+          r.custom_gift?.message;
+        if (typeof rMsg === "string" && rMsg.trim().length > 0) {
+          if (!/^(success|ok|true|false|order.*fetch|order.*create)$/i.test(rMsg.trim())) {
+            giftMsg = rMsg.trim();
+            break;
+          }
+        }
+      }
+    }
+
+    if (!giftMsg) {
+      const deepSearch = (obj: any, depth = 0): string => {
+        if (!obj || depth > 15) return "";
+        if (typeof obj === "string") return "";
+        if (Array.isArray(obj)) {
+          for (const el of obj) {
+            const found = deepSearch(el, depth + 1);
+            if (found) return found;
+          }
+          return "";
+        }
+        if (typeof obj === "object") {
+          const keys = ["message", "gift_message", "giftMessage", "custom_message", "customMessage", "gift_note"];
+          for (const k of keys) {
+            if (typeof obj[k] === "string" && obj[k].trim().length > 0) {
+              const val = obj[k].trim();
+              if (!/^(success|ok|true|false|order.*fetch|order.*create|failed|error)$/i.test(val)) {
+                return val;
+              }
+            }
+          }
+          for (const key of Object.keys(obj)) {
+            if (obj[key] && typeof obj[key] === "object" && key !== "headers" && key !== "config") {
+              const found = deepSearch(obj[key], depth + 1);
+              if (found) return found;
+            }
+          }
+        }
+        return "";
+      };
+      giftMsg = deepSearch(rawItem);
+    }
+
+    // 2. Extract Customer Note / Delivery Note
+    const noteKeys = [
+      "customer_note",
+      "customerNote",
+      "delivery_instruction",
+      "delivery_instructions",
+      "delivery_note",
+      "instructions",
+      "order_note",
+      "orderNote",
+      "user_note",
+      "userNote",
+      "remarks",
+      "comments",
+      "note",
+    ];
+    let custNote = "";
+    const noteCandidates = [firstOrder, item, rawItem, og, ...ordersList];
+    for (const c of noteCandidates) {
+      if (!c || typeof c !== "object") continue;
+      for (const k of noteKeys) {
+        if (typeof c[k] === "string" && c[k].trim().length > 0) {
+          const val = c[k].trim();
+          if (!giftMsg || val.toLowerCase() !== giftMsg.toLowerCase()) {
+            custNote = val;
+            break;
+          }
+        }
+      }
+      if (custNote) break;
     }
 
     setCustomerInfo({
@@ -466,6 +565,7 @@ export default function OrderDetails() {
       billingPhone,
       billingAddress: billingAddrStr,
       customerNote: custNote,
+      giftMessage: giftMsg,
     });
 
     const groupId = item.group_id || item.groupId || og.group_id || "";
@@ -507,44 +607,7 @@ export default function OrderDetails() {
     let totalSave = Number(item.totalsave ?? item.total_save ?? item.totalSave ?? 0);
     let weight = Number(item.totalWeight ?? item.total_weight ?? item.weight ?? 0);
 
-    // Parse products list
-    let rawProds: any[] = [];
-    if (ordersList.length > 0) {
-      rawProds = ordersList.flatMap((o: any) => {
-        const isCancelledOrder =
-          cancelledOrders.some((co: any) => (co._id && co._id === o._id) || (co.order_id && co.order_id === o.order_id)) ||
-          String(o.order_status || "").toLowerCase().includes("cancel");
-        const orderStatusStr = o.order_status || (isCancelledOrder ? "cancelled" : "processing");
-        const orderIdStr = o.order_id || "";
-
-        const itemsArr = Array.isArray(o.items)
-          ? o.items
-          : Array.isArray(o.products)
-            ? o.products
-            : Array.isArray(o.order_items)
-              ? o.order_items
-              : [];
-
-        return itemsArr.map((it: any) => ({
-          ...it,
-          _parentOrderId: orderIdStr,
-          _parentOrderStatus: orderStatusStr,
-          _parentIsCancelled: isCancelledOrder,
-        }));
-      });
-    } else {
-      rawProds = Array.isArray(item.products)
-        ? item.products
-        : Array.isArray(item.items)
-          ? item.items
-          : Array.isArray(item.order_items)
-            ? item.order_items
-            : Array.isArray(item.product_details)
-              ? item.product_details
-              : item.plan
-                ? [item.plan]
-                : [];
-    }
+    // Products list parsing
 
     let parsedProds: Product[] = [];
     if (rawProds.length > 0) {
@@ -683,6 +746,11 @@ export default function OrderDetails() {
           String(itemOrderStatus).toLowerCase().includes("cancel") ||
           Boolean(p.cancelled || p.isCancelled);
 
+        const itemGiftMsg =
+          (typeof pd.message === "string" && pd.message.trim()) ||
+          (typeof p.message === "string" && p.message.trim()) ||
+          giftMsg;
+
         return {
           name: pName,
           brand,
@@ -697,6 +765,7 @@ export default function OrderDetails() {
           orderId: p._parentOrderId || firstOrder.order_id || "",
           orderStatus: itemOrderStatus,
           isCancelled: isItemCancelled,
+          giftMessage: itemGiftMsg,
         };
       });
       setProductList(parsedProds);
@@ -1058,6 +1127,37 @@ export default function OrderDetails() {
     setPaymentTimeState(apiPaymentTime);
   };
 
+  const isOrderMatch = (o: any, targetId: string) => {
+    if (!o || typeof o !== "object" || !targetId) return false;
+    const q = String(targetId).trim().toLowerCase();
+    if (String(o.group_id || "").toLowerCase() === q) return true;
+    if (String(o.groupId || "").toLowerCase() === q) return true;
+    if (String(o._id || "").toLowerCase() === q) return true;
+    if (String(o.id || "").toLowerCase() === q) return true;
+    if (String(o.order_id || "").toLowerCase() === q) return true;
+    if (String(o.orderId || "").toLowerCase() === q) return true;
+    if (String(o.purchase_id || "").toLowerCase() === q) return true;
+    if (
+      Array.isArray(o.orders) &&
+      o.orders.some((sub: any) =>
+        String(sub.order_id || "").toLowerCase() === q ||
+        String(sub.orderId || "").toLowerCase() === q ||
+        String(sub._id || "").toLowerCase() === q ||
+        String(sub.id || "").toLowerCase() === q
+      )
+    ) return true;
+    if (
+      Array.isArray(o.activeOrders) &&
+      o.activeOrders.some((sub: any) =>
+        String(sub.order_id || "").toLowerCase() === q ||
+        String(sub.orderId || "").toLowerCase() === q ||
+        String(sub._id || "").toLowerCase() === q ||
+        String(sub.id || "").toLowerCase() === q
+      )
+    ) return true;
+    return false;
+  };
+
   // 🌐 GET API Call: Fetch Order Detail by ID
   const fetchOrderData = async () => {
     setLoadingOrder(true);
@@ -1100,9 +1200,12 @@ export default function OrderDetails() {
               if (resData) {
                 let targetItem: any = null;
                 if (Array.isArray(resData)) {
-                  targetItem = resData.find(
-                    (o: any) => o.group_id === queryId || o._id === queryId || o.id === queryId
-                  ) || resData[0];
+                  const matched = queryId ? resData.find((o: any) => isOrderMatch(o, queryId)) : null;
+                  if (matched) {
+                    targetItem = matched;
+                  } else if (resData.length === 1) {
+                    targetItem = resData[0];
+                  }
                 } else if (typeof resData === "object" && (resData.group_id || resData.orders || resData._id || resData.items)) {
                   targetItem = resData;
                 }
@@ -1142,15 +1245,7 @@ export default function OrderDetails() {
           setAllApiOrders(rawList);
           let targetIdx = 0;
           if (queryId) {
-            const foundIdx = rawList.findIndex(
-              (o) =>
-                o.group_id === queryId ||
-                o._id === queryId ||
-                o.id === queryId ||
-                o.orderId === queryId ||
-                o.order_id === queryId ||
-                o.purchase_id === queryId
-            );
+            const foundIdx = rawList.findIndex((o) => isOrderMatch(o, queryId));
             if (foundIdx !== -1) targetIdx = foundIdx;
           }
           setCurrentOrderIndex(targetIdx);
@@ -1679,16 +1774,28 @@ export default function OrderDetails() {
       currY += rowHeight;
     });
 
-    if (customerInfo.customerNote) {
+    if (customerInfo.customerNote || customerInfo.giftMessage) {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(8.5);
       doc.setTextColor(148, 163, 184);
-      const noteLines: string[] = doc.splitTextToSize(`Note: "${customerInfo.customerNote}"`, 240);
       let noteY = finalY + 14;
-      noteLines.forEach((nLine: string) => {
-        doc.text(nLine, 40, noteY);
-        noteY += 12;
-      });
+      if (customerInfo.customerNote) {
+        const noteLines: string[] = doc.splitTextToSize(`Note: "${customerInfo.customerNote}"`, 240);
+        noteLines.forEach((nLine: string) => {
+          doc.text(nLine, 40, noteY);
+          noteY += 12;
+        });
+      }
+      if (
+        customerInfo.giftMessage &&
+        customerInfo.giftMessage.toLowerCase() !== customerInfo.customerNote?.toLowerCase()
+      ) {
+        const giftLines: string[] = doc.splitTextToSize(`Gift Message: "${customerInfo.giftMessage}"`, 240);
+        giftLines.forEach((gLine: string) => {
+          doc.text(gLine, 40, noteY);
+          noteY += 12;
+        });
+      }
     }
 
     const pageCount = (doc as any).internal.getNumberOfPages();
@@ -1907,19 +2014,40 @@ export default function OrderDetails() {
               </div>
             </div>
 
-            {customerInfo.customerNote && (
-              <div className="mt-5 bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
-                <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
-                  <FileText size={20} className="stroke-[2.2]" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
-                    CUSTOMER NOTE
-                  </h3>
-                  <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
-                    "{customerInfo.customerNote}"
-                  </p>
-                </div>
+            {/* Customer Note & Gift Message cards */}
+            {(customerInfo.customerNote || customerInfo.giftMessage) && (
+              <div className="mt-5 space-y-3">
+                {customerInfo.customerNote && (
+                  <div className="bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
+                    <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
+                      <FileText size={20} className="stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
+                        CUSTOMER NOTE
+                      </h3>
+                      <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
+                        "{customerInfo.customerNote}"
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {customerInfo.giftMessage && (
+                  <div className="bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
+                    <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
+                      <Gift size={20} className="stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
+                        GIFT MESSAGE
+                      </h3>
+                      <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
+                        "{customerInfo.giftMessage}"
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
