@@ -173,7 +173,7 @@ function AdminLoginForm() {
           SHUDDHVEDA
         </h1>
         <p className="text-center text-xs font-semibold tracking-widest text-[#B97B00] uppercase mt-1 mb-8">
-          Admin Control Center
+          Admin Control Centers
         </p>
 
         {searchParams.get("expired") === "true" && (
