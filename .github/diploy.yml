@@ -1,27 +1,40 @@
-- name: Deploy to VPS
-        env:
-          HOST: ${{ secrets.VPS_HOST }}
-          USER: ${{ secrets.VPS_USER }}
-          PORT: ${{ secrets.VPS_PORT }}
-          APP_PATH: ${{ secrets.APP_PATH }}
-        run: |
-          ssh -i ~/.ssh/deploy_key \
-            -p "$PORT" \
-            "$USER@$HOST" \
-            'bash -s -- "$1"' bash "$APP_PATH" <<'REMOTE'
-          set -euo pipefail
-          APP_PATH="$1"
-          cd "$APP_PATH"
+name: Deploy Suddhveda
 
-          git pull --ff-only origin main
-          pnpm install --frozen-lockfile
-          pnpm build
+on:
+  push:
+    branches:
+      - main
 
-          if pm2 describe svhadmin >/dev/null 2>&1; then
-            pm2 restart svhadmin --update-env
-          else
-            pm2 start ecosystem.config.cjs
-          fi
+  workflow_dispatch:
 
-          pm2 save
-          REMOTE
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+
+            cd /var/www/shuddhvedaadmin
+
+            echo "Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Installing dependencies..."
+            npm i
+
+            echo "Building Next.js..."
+            npm run build
+
+            echo "Restarting application..."
+            pm2 restart svhadmin
+
+            echo "Deployment successful!"
