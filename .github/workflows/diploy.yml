@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: shuddhvedaadmin-production
+  group: shuddhveda-admin-production
   cancel-in-progress: false
 
 jobs:
@@ -30,12 +30,13 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           timeout: 30s
           command_timeout: 15m
+
           script: |
             set -e
 
             cd /var/www/shuddhvedaadmin
 
-            echo "Checking deployment branch..."
+            echo "Pulling latest code..."
             git fetch origin master
             git reset --hard origin/master
 
@@ -49,7 +50,7 @@ jobs:
             if pm2 describe svhadmin >/dev/null 2>&1; then
               pm2 restart svhadmin --update-env
             else
-              pm2 start npm --name svhadmin -- start -- -p 3051
+              pm2 start npm --name svhadmin -- start
             fi
 
             pm2 save
