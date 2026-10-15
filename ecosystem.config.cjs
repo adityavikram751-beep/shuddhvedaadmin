@@ -1,0 +1,18 @@
+module.exports = {
+    apps: [
+        {
+            name: "svhadmin",
+            script: "./node_modules/next/dist/bin/next",
+            args: "start -p 3051",
+            cwd: __dirname,
+            instances: 1,
+            exec_mode: "fork",
+            autorestart: true,
+            watch: false,
+            env: {
+                NODE_ENV: "production",
+                PORT: 3051
+            }
+        }
+    ]
+};

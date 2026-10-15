@@ -1,0 +1,27 @@
+- name: Deploy to VPS
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_PORT }}
+          APP_PATH: ${{ secrets.APP_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "$PORT" \
+            "$USER@$HOST" \
+            'bash -s -- "$1"' bash "$APP_PATH" <<'REMOTE'
+          set -euo pipefail
+          APP_PATH="$1"
+          cd "$APP_PATH"
+
+          git pull --ff-only origin main
+          pnpm install --frozen-lockfile
+          pnpm build
+
+          if pm2 describe svhadmin >/dev/null 2>&1; then
+            pm2 restart svhadmin --update-env
+          else
+            pm2 start ecosystem.config.cjs
+          fi
+
+          pm2 save
+          REMOTE
