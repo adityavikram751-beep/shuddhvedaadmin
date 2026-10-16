@@ -4,13 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ShoppingCart,
-  Calendar,
   Gift,
   AlertTriangle,
   Package,
-  Bell,
   Loader2,
-  Percent,
   Settings,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
@@ -20,16 +17,8 @@ import { io, Socket } from "socket.io-client";
 export interface RecentOrderItem {
   id: string;
   customer: string;
-  amount: string;
   status: string;
   time: string;
-}
-
-export interface ScheduledProductItem {
-  name: string;
-  date: string;
-  time: string;
-  image?: string;
 }
 
 export interface NotificationWidgetDisplay {
@@ -42,42 +31,47 @@ export interface NotificationWidgetDisplay {
 
 // ---------- Initial Mock Fallbacks ----------
 const defaultRecentOrders: RecentOrderItem[] = [
-  { id: "#ORD-1028", customer: "Priya Sharma", amount: "₹1,250", status: "New", time: "10 min ago" },
-  { id: "#ORD-1027", customer: "Anjali Mehta", amount: "₹950", status: "New", time: "35 min ago" },
-  { id: "#ORD-1026", customer: "Anjali Mehta", amount: "₹2,100", status: "Processing", time: "1 hour ago" },
-  { id: "#ORD-1025", customer: "Neha Kapoor", amount: "₹1,750", status: "Processing", time: "2 hours ago" },
-  { id: "#ORD-1024", customer: "Arjun Singh", amount: "₹680", status: "Pending", time: "3 hours ago" },
-];
-
-const defaultScheduledProducts: ScheduledProductItem[] = [
-  { name: "Tulsi Honey (500g)", date: "Jun 7, 2025", time: "10:00 AM" },
-  { name: "Wild Honey Gift Box", date: "Jun 8, 2025", time: "09:00 AM" },
-  { name: "Raw Sidr Honey Pack", date: "Jun 10, 2025", time: "11:30 AM" },
+  { id: "#ORD-1028", customer: "Priya Sharma", status: "New", time: "10 min ago" },
+  { id: "#ORD-1027", customer: "Anjali Mehta", status: "New", time: "35 min ago" },
+  { id: "#ORD-1026", customer: "Anjali Mehta", status: "Processing", time: "1 hour ago" },
+  { id: "#ORD-1025", customer: "Neha Kapoor", status: "Processing", time: "2 hours ago" },
+  { id: "#ORD-1024", customer: "Arjun Singh", status: "Pending", time: "3 hours ago" },
 ];
 
 const defaultNotifications: NotificationWidgetDisplay[] = [
   { text: "New custom gift request received", time: "15 min ago", icon: Gift, color: "#A855F7", bg: "#F5EEFF" },
   { text: "Order #ORD-1028 has been placed", time: "20 min ago", icon: ShoppingCart, color: "#22C55E", bg: "#ECFDF3" },
   { text: "Low stock alert for 7 items", time: "1 hour ago", icon: AlertTriangle, color: "#EAB308", bg: "#FEF9E7" },
-  { text: "Your product Tulsi Honey is scheduled", time: "2 hours ago", icon: Calendar, color: "#3B82F6", bg: "#EFF6FF" },
+  { text: "Website settings updated", time: "2 hours ago", icon: Settings, color: "#3B82F6", bg: "#EFF6FF" },
+  { text: "New product inquiry received", time: "3 hours ago", icon: Package, color: "#6366F1", bg: "#EEF2FF" },
 ];
 
 // ---------- Helpers ----------
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    New: "bg-[#ECFDF3] text-[#22C55E]",
-    Active: "bg-[#ECFDF3] text-[#22C55E]",
-    Processing: "bg-[#EFF6FF] text-[#3B82F6]",
-    Pending: "bg-[#FFF4EB] text-[#FF7A00]",
-    Completed: "bg-emerald-100 text-emerald-800",
-  };
+  const lower = (status || "").toLowerCase().trim();
+  let badgeStyle = "bg-gray-100 text-gray-600";
+
+  if (lower.includes("new")) {
+    badgeStyle = "bg-[#ECFDF3] text-[#22C55E]";
+  } else if (lower.includes("process")) {
+    badgeStyle = "bg-[#EFF6FF] text-[#3B82F6]";
+  } else if (lower.includes("pend")) {
+    badgeStyle = "bg-[#FFF4EB] text-[#FF7A00]";
+  } else if (lower.includes("deliver") || lower.includes("complet") || lower.includes("active")) {
+    badgeStyle = "bg-emerald-100 text-emerald-800";
+  } else if (lower.includes("cancel") || lower.includes("fail")) {
+    badgeStyle = "bg-red-50 text-red-600";
+  } else if (lower.includes("ship")) {
+    badgeStyle = "bg-purple-50 text-purple-600";
+  }
+
+  const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : "New";
+
   return (
     <span
-      className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide ${
-        styles[status] || "bg-gray-100 text-gray-600"
-      }`}
+      className={`inline-block px-3.5 py-1 rounded-full text-xs font-bold tracking-wide capitalize ${badgeStyle}`}
     >
-      {status}
+      {label}
     </span>
   );
 }
@@ -97,59 +91,78 @@ function formatRelativeTime(timeStr?: string): string {
   return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
 }
 
-function formatScheduledDate(dateStr?: string): { date: string; time: string } {
-  if (!dateStr) return { date: "Jun 7, 2025", time: "10:00 AM" };
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return { date: dateStr, time: "10:00 AM" };
-  const formattedDate = d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  const formattedTime = d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return { date: formattedDate, time: formattedTime };
-}
-
 export default function RecentOrdersSection() {
   const [recentOrders, setRecentOrders] = useState<RecentOrderItem[]>(defaultRecentOrders);
-  const [scheduledProducts, setScheduledProducts] = useState<ScheduledProductItem[]>(defaultScheduledProducts);
+  const [loadingOrders, setLoadingOrders] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<NotificationWidgetDisplay[]>(defaultNotifications);
-  const [loadingScheduled, setLoadingScheduled] = useState(false);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
 
-  // 🌐 GET API Call: Fetch Scheduled Products (Purchase Plan Delivery Orders)
-  const fetchScheduledProducts = async () => {
-    setLoadingScheduled(true);
+  // 🌐 GET API Call: Fetch Recent Orders ({{baseUrl}}/api/admin/order-dashboard/recent-orders)
+  const fetchRecentOrders = async () => {
+    setLoadingOrders(true);
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("sudhveda_token") ||
+          localStorage.getItem("admin_token") ||
+          localStorage.getItem("token")
+        : null;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/plan-orders/purchase-plans`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/order-dashboard/recent-orders`, {
         method: "GET",
         credentials: "include",
+        headers,
       });
       const json = await res.json().catch(() => ({}));
-      if (res.ok && (json.data || Array.isArray(json))) {
-        const rawList: any[] = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      if (res.ok && (json.success || Array.isArray(json.data) || Array.isArray(json))) {
+        const rawList: any[] = Array.isArray(json.data)
+          ? json.data
+          : Array.isArray(json)
+          ? json
+          : Array.isArray(json.orders)
+          ? json.orders
+          : [];
+
         if (rawList.length > 0) {
-          const mapped: ScheduledProductItem[] = rawList.slice(0, 3).map((item) => {
-            const planName = item.plan?.name || item.customer?.name || "Honey Subscription";
-            const dateObj = formatScheduledDate(item.deliveries?.[0]?.scheduledDate || item.startDate || item.createdAt);
+          const mapped: RecentOrderItem[] = rawList.slice(0, 5).map((item) => {
+            // Customer name formatting
+            const rawName =
+              item.name || item.customer_name || item.customerName || item.customer || "Customer";
+            const customerName = String(rawName)
+              .split(" ")
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(" ");
+
+            // Status & Time
+            const status = item.order_status || item.status || "New";
+            const time =
+              item.placed_ago ||
+              (item.placed_at ? formatRelativeTime(item.placed_at) : item.time || "Recently");
+
             return {
-              name: planName,
-              date: dateObj.date,
-              time: dateObj.time,
-              image: item.plan?.plan_image,
+              id: item.order_id || item.orderId || item.id || "#ORD-1000",
+              customer: customerName,
+              status,
+              time,
             };
           });
-          setScheduledProducts(mapped);
+          setRecentOrders(mapped);
+        } else if (json.success) {
+          setRecentOrders([]);
         }
       }
     } catch (err) {
-      console.error("Error fetching scheduled products for dashboard:", err);
+      console.error("Error fetching recent orders:", err);
     } finally {
-      setLoadingScheduled(false);
+      setLoadingOrders(false);
     }
   };
 
@@ -172,7 +185,7 @@ export default function RecentOrdersSection() {
           : [];
 
         if (rawList.length > 0) {
-          const mapped: NotificationWidgetDisplay[] = rawList.slice(0, 4).map((item) => {
+          const mapped: NotificationWidgetDisplay[] = rawList.slice(0, 5).map((item) => {
             const title = item.title || item.subject || item.description || "System Notification";
             const lower = title.toLowerCase();
             let icon = Settings;
@@ -216,7 +229,7 @@ export default function RecentOrdersSection() {
   };
 
   useEffect(() => {
-    void fetchScheduledProducts();
+    void fetchRecentOrders();
     void fetchNotifications();
 
     const socket: Socket = io(API_BASE_URL, {
@@ -229,6 +242,7 @@ export default function RecentOrdersSection() {
     });
 
     const handleNewOrder = () => {
+      void fetchRecentOrders();
       void fetchNotifications();
     };
 
@@ -242,9 +256,9 @@ export default function RecentOrdersSection() {
   }, []);
 
   return (
-    <div className="mt-16 grid grid-cols-1 w-[1120px] gap-6 lg:grid-cols-3 items-stretch">
+    <div className="mt-14 grid grid-cols-1 w-full gap-8 lg:grid-cols-[1.6fr_1fr] items-stretch">
       {/* Left Column: Recent Orders Table */}
-      <div className="lg:col-span-2 bg-white rounded-[32px] p-8 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+      <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold text-[#1E293B]">Recent Orders</h3>
@@ -260,27 +274,49 @@ export default function RecentOrdersSection() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-widest border-b border-gray-100">
-                  <th className="pb-5">ORDER ID</th>
-                  <th className="pb-5">CUSTOMER</th>
-                  <th className="pb-5">AMOUNT</th>
-                  <th className="pb-5">STATUS</th>
+                  <th className="pb-5 pr-4">ORDER ID</th>
+                  <th className="pb-5 pr-4">CUSTOMER</th>
+                  <th className="pb-5 pr-4">STATUS</th>
                   <th className="pb-5 text-right">TIME</th>
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order, idx) => (
-                  <tr key={idx} className="border-b border-gray-50 last:border-0">
-                    <td className="py-5 font-bold text-[#0F172A] text-sm">{order.id}</td>
-                    <td className="py-5 text-[#64748B] text-sm font-medium">{order.customer}</td>
-                    <td className="py-5 font-bold text-[#0F172A] text-sm">{order.amount}</td>
-                    <td className="py-5">
-                      <StatusBadge status={order.status} />
-                    </td>
-                    <td className="py-5 text-right text-[#94A3B8] text-xs font-medium uppercase tracking-wider">
-                      {order.time}
+                {loadingOrders ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center">
+                      <div className="flex items-center justify-center gap-2 text-xs font-semibold text-gray-400">
+                        <Loader2 size={16} className="animate-spin text-[#FF7A00]" />
+                        Loading recent orders...
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : recentOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-sm text-[#94A3B8] font-medium">
+                      No recent orders found
+                    </td>
+                  </tr>
+                ) : (
+                  recentOrders.map((order, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
+                    >
+                      <td className="py-5 pr-4 font-bold text-[#0F172A] text-sm whitespace-nowrap">
+                        {order.id}
+                      </td>
+                      <td className="py-5 pr-4 text-[#64748B] text-sm font-medium">
+                        {order.customer}
+                      </td>
+                      <td className="py-5 pr-4 whitespace-nowrap">
+                        <StatusBadge status={order.status} />
+                      </td>
+                      <td className="py-5 text-right text-[#94A3B8] text-xs font-medium uppercase tracking-wider whitespace-nowrap">
+                        {order.time}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -296,63 +332,10 @@ export default function RecentOrdersSection() {
         </div>
       </div>
 
-      {/* Right Column: Scheduled Products + Notifications */}
-      <div className="lg:col-span-1 flex flex-col justify-between w-[465px] gap-6 h-full">
-        {/* 📅 Scheduled Products Block */}
-        <div className="flex-1 bg-white rounded-[32px] p-8 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-[#1E293B]">Scheduled Products</h3>
-            <Link
-              href="/subscribe/delivery-order"
-              className="text-sm font-bold text-[#0F172A] hover:opacity-70 transition-opacity"
-            >
-              View All
-            </Link>
-          </div>
-
-          <div className="space-y-8 my-auto">
-            {loadingScheduled ? (
-              <div className="flex items-center justify-center py-6 text-gray-400 text-xs gap-2">
-                <Loader2 size={16} className="animate-spin text-[#E69A00]" />
-                Loading scheduled products...
-              </div>
-            ) : (
-              scheduledProducts.map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="h-14 w-14 shrink-0 rounded-2xl object-cover border border-amber-200"
-                      />
-                    ) : (
-                      <div className="h-14 w-14 shrink-0 rounded-2xl bg-gradient-to-br from-[#D9A74A] via-[#A16A1F] to-[#613D0C] shadow-inner" />
-                    )}
-                    <div>
-                      <p className="text-sm font-bold text-[#0F172A] leading-tight">
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-[#94A3B8] font-medium mt-1">Scheduled for</p>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div className="flex items-center justify-end gap-1 text-xs font-bold text-[#64748B]">
-                      <Calendar size={13} className="text-[#94A3B8]" />
-                      <span>{item.date}</span>
-                    </div>
-                    <p className="text-[11px] font-medium text-[#94A3B8] mt-0.5">{item.time}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* 🔔 Notifications Block */}
-        <div className="flex-1 rounded-[22px] bg-white border border-[#F1F1F1] shadow-[0_2px_8px_rgba(0,0,0,0.04)] px-7 py-6">
-          <div className="flex items-center justify-between mb-4">
+      {/* Right Column: Notifications */}
+      <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] flex flex-col justify-between">
+        <div>
+          <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold text-[#1E293B]">Notifications</h3>
             <Link
               href="/notifications"
@@ -362,7 +345,7 @@ export default function RecentOrdersSection() {
             </Link>
           </div>
 
-          <div className="space-y-5 my-auto">
+          <div className="space-y-6">
             {loadingNotifs ? (
               <div className="flex items-center justify-center py-6 text-gray-400 text-xs gap-2">
                 <Loader2 size={16} className="animate-spin text-[#E69A00]" />
@@ -380,11 +363,11 @@ export default function RecentOrdersSection() {
                       >
                         <NotifIcon size={18} style={{ color: notif.color }} />
                       </div>
-                      <p className="text-sm font-semibold text-[#334155] leading-snug max-w-[180px] md:max-w-xs">
+                      <p className="text-sm font-semibold text-[#334155] leading-snug line-clamp-2">
                         {notif.text}
                       </p>
                     </div>
-                    <p className="text-xs font-medium text-[#94A3B8] shrink-0 text-right">
+                    <p className="text-xs font-medium text-[#94A3B8] shrink-0 text-right whitespace-nowrap">
                       {notif.time}
                     </p>
                   </div>
@@ -392,6 +375,15 @@ export default function RecentOrdersSection() {
               })
             )}
           </div>
+        </div>
+
+        <div className="mt-6">
+          <Link
+            href="/notifications"
+            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-[#F8F9FA] text-xs font-bold text-[#0F172A] hover:bg-gray-100 transition-colors"
+          >
+            View All Notifications →
+          </Link>
         </div>
       </div>
     </div>
