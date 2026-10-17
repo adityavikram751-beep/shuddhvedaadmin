@@ -51,6 +51,7 @@ interface Order {
   codAmount?: number;
   date: string;
   time: string;
+  timestamp?: number;
   raw?: any;
 }
 
@@ -429,13 +430,19 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
 
   const codAmount = Number(item.cod_amount ?? item.codAmount ?? og.cod_amount ?? 0);
 
-  const dateObj = new Date(item.date || item.createdAt || item.orderDate || Date.now());
-  const dateStr = !isNaN(dateObj.getTime())
-    ? dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-    : "";
-  const timeStr = !isNaN(dateObj.getTime())
-    ? dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
-    : "";
+  const rawDateValue =
+    item.createdAt ||
+    item.date ||
+    item.orderDate ||
+    item.order_date ||
+    item.created_at ||
+    (item._id && typeof item._id === "string" && item._id.length === 24
+      ? new Date(parseInt(item._id.substring(0, 8), 16) * 1000)
+      : null);
+  const parsedDate = rawDateValue ? new Date(rawDateValue) : new Date();
+  const dateObj = !isNaN(parsedDate.getTime()) ? parsedDate : new Date();
+  const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
   return {
     rawId: mongoId,
@@ -463,6 +470,7 @@ function mapApiOrderToUiOrder(item: any, index: number): Order {
     codAmount,
     date: dateStr,
     time: timeStr,
+    timestamp: dateObj.getTime(),
     raw: item,
   };
 }
@@ -541,6 +549,116 @@ function FilterDropdown({
   );
 }
 
+function DateRangeDropdown({
+  value,
+  onSelect,
+  customStart,
+  customEnd,
+  onApplyCustom,
+}: {
+  value: string;
+  onSelect: (val: string) => void;
+  customStart: string;
+  customEnd: string;
+  onApplyCustom: (start: string, end: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [tempStart, setTempStart] = useState(customStart);
+  const [tempEnd, setTempEnd] = useState(customEnd);
+
+  const dateOptions = [
+    "All Time",
+    "Today",
+    "Yesterday",
+    "Last 7 Days",
+    "This Month",
+    "Last Month",
+    "Custom Range",
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex flex-col items-start px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors col-span-2 sm:col-span-1 min-w-[170px] text-left cursor-pointer"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+          DATE RANGE
+        </span>
+        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+          <Calendar size={13} className="text-gray-400 shrink-0" />
+          <span className="truncate">{value}</span>
+        </span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-60 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 z-20 max-h-72 overflow-y-auto">
+            {dateOptions.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  if (opt === "Custom Range") {
+                    setShowCustom((v) => !v);
+                  } else {
+                    setShowCustom(false);
+                    onSelect(opt);
+                    setOpen(false);
+                  }
+                }}
+                className={`w-full flex items-center justify-between px-4 py-2 text-sm text-left hover:bg-gray-50 cursor-pointer ${
+                  opt === value ? "text-orange-500 font-medium" : "text-gray-600"
+                }`}
+              >
+                {opt}
+                {opt === value && <Check size={14} />}
+              </button>
+            ))}
+
+            {showCustom && (
+              <div className="px-3 py-2 border-t border-gray-100 space-y-2 bg-gray-50/50">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">From</span>
+                  <input
+                    type="date"
+                    value={tempStart}
+                    onChange={(e) => setTempStart(e.target.value)}
+                    className="w-full text-xs border border-gray-200 rounded-lg p-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 uppercase font-semibold">To</span>
+                  <input
+                    type="date"
+                    value={tempEnd}
+                    onChange={(e) => setTempEnd(e.target.value)}
+                    className="w-full text-xs border border-gray-200 rounded-lg p-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={!tempStart && !tempEnd}
+                  onClick={() => {
+                    onApplyCustom(tempStart, tempEnd);
+                    setOpen(false);
+                  }}
+                  className="w-full py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function OrdersTable() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>(allOrders);
@@ -549,9 +667,39 @@ export default function OrdersTable() {
   const [search, setSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All Statuses");
   const [paymentFilter, setPaymentFilter] = useState<string>("All Payments");
+  const [dateFilter, setDateFilter] = useState<string>("All Time");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
   const [selected, setSelected] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<"all" | "active" | "cancelled">("all");
+
+  const dateRangeDisplay = useMemo(() => {
+    if (dateFilter === "All Time") return "All Time";
+    if (dateFilter === "Today") return "Today";
+    if (dateFilter === "Yesterday") return "Yesterday";
+    if (dateFilter === "Last 7 Days") return "Last 7 Days";
+    if (dateFilter === "This Month") {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return `${start.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} - ${end.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`;
+    }
+    if (dateFilter === "Last Month") {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      return `${start.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} - ${end.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`;
+    }
+    if (customStartDate && customEndDate) {
+      const s = new Date(`${customStartDate}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+      const e = new Date(`${customEndDate}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      return `${s} - ${e}`;
+    }
+    if (customStartDate) return `From ${customStartDate}`;
+    if (customEndDate) return `To ${customEndDate}`;
+    return dateFilter;
+  }, [dateFilter, customStartDate, customEndDate]);
 
   const { allCount, activeCount, cancelledCount } = useMemo(() => {
     let active = 0;
@@ -571,14 +719,115 @@ export default function OrdersTable() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
+      const q = search.trim().toLowerCase();
       const matchesSearch =
-        search.trim() === "" ||
-        order.id.toLowerCase().includes(search.toLowerCase()) ||
-        order.customer.toLowerCase().includes(search.toLowerCase()) ||
-        order.products.some((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+        q === "" ||
+        order.id.toLowerCase().includes(q) ||
+        order.customer.toLowerCase().includes(q) ||
+        order.phone.toLowerCase().includes(q) ||
+        order.email.toLowerCase().includes(q) ||
+        order.products.some((p) => p.name.toLowerCase().includes(q));
 
-      const matchesStatus = statusFilter === "All Statuses" || order.status === statusFilter;
-      const matchesPayment = paymentFilter === "All Payments" || order.payment === paymentFilter;
+      // 1. Status Filter
+      const matchesStatus = (() => {
+        if (statusFilter === "All Statuses") return true;
+        const target = statusFilter.toLowerCase();
+        const st = String(order.status || "").toLowerCase();
+        const rawSt = String(order.raw?.delivery_status || order.raw?.status || order.raw?.order_status || "").toLowerCase();
+
+        if (target === "processing") {
+          return st === "processing" || rawSt.includes("process") || rawSt.includes("pending") || rawSt.includes("active");
+        }
+        if (target === "packed") {
+          return st === "packed" || rawSt.includes("pack") || rawSt.includes("pickup") || rawSt.includes("ready");
+        }
+        if (target === "shipped") {
+          return st === "shipped" || rawSt.includes("ship") || rawSt.includes("transit") || rawSt.includes("dispatch");
+        }
+        if (target === "delivered") {
+          return st === "delivered" || rawSt.includes("deliver");
+        }
+        if (target === "cancelled") {
+          return st === "cancelled" || rawSt.includes("cancel") || rawSt.includes("refund");
+        }
+        return st === target;
+      })();
+
+      // 2. Payment Filter
+      const matchesPayment = (() => {
+        if (paymentFilter === "All Payments") return true;
+
+        const mode = String(order.paymentMode || order.raw?.payment_mode || order.raw?.paymentMethod || "").toUpperCase();
+        const pStatus = String(order.paymentStatus || order.raw?.payment_status || order.raw?.payment?.status || "").toLowerCase();
+        const pText = String(order.payment || "").toLowerCase();
+        const rawStatus = String(order.raw?.payment_status || "").toLowerCase();
+
+        const isPaid = pStatus === "paid" || pStatus === "success" || rawStatus === "paid" || rawStatus === "success" || pText.includes("paid") || pText.includes("success");
+        const isRefunded = pStatus === "refunded" || rawStatus === "refunded" || pText.includes("refund") || order.refundStatus === "refunded";
+        const isCod = mode === "COD" || pText.includes("cod") || String(order.raw?.payment_mode || "").toLowerCase() === "cod";
+        const isUpi = mode.includes("UPI") || pText.includes("upi");
+        const isCard = mode.includes("CARD") || mode.includes("ONLINE") || mode.includes("RAZORPAY") || mode.includes("NETBANKING") || pText.includes("card") || pText.includes("razorpay") || pText.includes("online");
+
+        if (paymentFilter === "COD") {
+          return isCod;
+        }
+        if (paymentFilter === "Paid (UPI)") {
+          return (isUpi || (!isCod && isPaid)) && isPaid;
+        }
+        if (paymentFilter === "Paid (Card)") {
+          return (isCard || (!isCod && !isUpi && isPaid));
+        }
+        if (paymentFilter === "Refunded") {
+          return isRefunded;
+        }
+        return order.payment === paymentFilter;
+      })();
+
+      // 3. Date Range Filter
+      const matchesDate = (() => {
+        if (dateFilter === "All Time") return true;
+        const time = order.timestamp || 0;
+        if (!time) return true;
+
+        const now = new Date();
+        if (dateFilter === "Today") {
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+          return time >= startOfToday && time <= endOfToday;
+        }
+        if (dateFilter === "Yesterday") {
+          const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+          const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999).getTime();
+          return time >= startOfYesterday && time <= endOfYesterday;
+        }
+        if (dateFilter === "Last 7 Days") {
+          const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).getTime();
+          return time >= sevenDaysAgo;
+        }
+        if (dateFilter === "This Month") {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+          const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+          return time >= startOfMonth && time <= endOfMonth;
+        }
+        if (dateFilter === "Last Month") {
+          const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+          const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+          return time >= startOfLastMonth && time <= endOfLastMonth;
+        }
+        if (dateFilter === "Custom Range" || customStartDate || customEndDate) {
+          let matches = true;
+          if (customStartDate) {
+            const start = new Date(`${customStartDate}T00:00:00`).getTime();
+            if (!isNaN(start)) matches = matches && time >= start;
+          }
+          if (customEndDate) {
+            const end = new Date(`${customEndDate}T23:59:59.999`).getTime();
+            if (!isNaN(end)) matches = matches && time <= end;
+          }
+          return matches;
+        }
+        return true;
+      })();
 
       let matchesTab = true;
       if (activeTab === "active") {
@@ -587,9 +836,9 @@ export default function OrdersTable() {
         matchesTab = order.cancelledOrderCount !== undefined ? order.cancelledOrderCount > 0 : order.status === "Cancelled";
       }
 
-      return matchesSearch && matchesStatus && matchesPayment && matchesTab;
+      return matchesSearch && matchesStatus && matchesPayment && matchesDate && matchesTab;
     });
-  }, [orders, search, statusFilter, paymentFilter, activeTab]);
+  }, [orders, search, statusFilter, paymentFilter, dateFilter, customStartDate, customEndDate, activeTab]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -707,6 +956,9 @@ export default function OrdersTable() {
     setSearch("");
     setStatusFilter("All Statuses");
     setPaymentFilter("All Payments");
+    setDateFilter("All Time");
+    setCustomStartDate("");
+    setCustomEndDate("");
     setCurrentPage(1);
   };
 
@@ -774,15 +1026,23 @@ export default function OrdersTable() {
                 setCurrentPage(1);
               }}
             />
-            <button className="flex flex-col items-start px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors col-span-2 sm:col-span-1 min-w-[170px] text-left">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                Date Range
-              </span>
-              <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-                <Calendar size={13} className="text-gray-400 shrink-0" />
-                01 May - 31 May 2024
-              </span>
-            </button>
+            <DateRangeDropdown
+              value={dateRangeDisplay}
+              onSelect={(opt) => {
+                setDateFilter(opt);
+                setCustomStartDate("");
+                setCustomEndDate("");
+                setCurrentPage(1);
+              }}
+              customStart={customStartDate}
+              customEnd={customEndDate}
+              onApplyCustom={(start, end) => {
+                setDateFilter("Custom Range");
+                setCustomStartDate(start);
+                setCustomEndDate(end);
+                setCurrentPage(1);
+              }}
+            />
           </div>
         </div>
 
