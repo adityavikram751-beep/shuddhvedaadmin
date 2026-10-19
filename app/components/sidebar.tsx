@@ -42,7 +42,17 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, chevron: false, keyword: "dashboard" },
-  { label: "Orders", href: "/order", icon: ShoppingBag, chevron: false, keyword: "order" },
+  {
+    label: "Orders",
+    href: "/order",
+    icon: ShoppingBag,
+    chevron: true,
+    keyword: "order",
+    subItems: [
+      { label: "All Orders", href: "/order" },
+      { label: "Return Orders", href: "/order/returns" },
+    ],
+  },
   {
     label: "Products",
     href: "/product",
@@ -260,7 +270,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   >
                     <div className="ml-6 pl-3 border-l border-gray-100 space-y-1">
                       {subItems!.map((sub) => {
-                        const isSubActive = pathname.toLowerCase() === sub.href.toLowerCase();
+                        const isSubActive =
+                          pathname.toLowerCase() === sub.href.toLowerCase() ||
+                          (sub.href === "/order" && pathname.toLowerCase().startsWith("/order") && !pathname.toLowerCase().startsWith("/order/returns"));
                         return (
                           <Link
                             key={sub.href}
