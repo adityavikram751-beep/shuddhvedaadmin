@@ -28,6 +28,8 @@ import {
   Check,
   X,
   Gift,
+  Maximize2,
+  Eye,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -48,6 +50,7 @@ interface Product {
   orderStatus?: string;
   isCancelled?: boolean;
   giftMessage?: string;
+  messageImage?: string;
 }
 
 const defaultProducts: Product[] = [
@@ -158,6 +161,7 @@ export default function OrderDetails() {
   });
 
   const [productList, setProductList] = useState<Product[]>([]);
+  const [previewModalImage, setPreviewModalImage] = useState<string | null>(null);
   const [orderCounts, setOrderCounts] = useState<{
     total: number;
     active: number;
@@ -404,11 +408,22 @@ export default function OrderDetails() {
               ? o.order_items
               : [];
 
+        const oMsg =
+          o.message ||
+          o.gift_message ||
+          o.giftMessage ||
+          o.custom_message ||
+          o.giftBox?.message ||
+          o.gift_box?.message;
+        const oGBox = o.giftBox || o.gift_box || o.custom_gift;
+
         return itemsArr.map((it: any) => ({
           ...it,
           _parentOrderId: orderIdStr,
           _parentOrderStatus: orderStatusStr,
           _parentIsCancelled: isCancelledOrder,
+          _parentOrderMessage: oMsg || it._parentOrderMessage,
+          _parentGiftBox: oGBox || it._parentGiftBox,
         }));
       });
     } else {
@@ -746,10 +761,106 @@ export default function OrderDetails() {
           String(itemOrderStatus).toLowerCase().includes("cancel") ||
           Boolean(p.cancelled || p.isCancelled);
 
-        const itemGiftMsg =
-          (typeof pd.message === "string" && pd.message.trim()) ||
-          (typeof p.message === "string" && p.message.trim()) ||
-          giftMsg;
+        const extractProdMessage = (itemObj: any, detailsObj: any, gBoxObj: any, pObj: any): string => {
+          const cands = [
+            detailsObj.message,
+            detailsObj.customMessage,
+            detailsObj.custom_message,
+            detailsObj.giftMessage,
+            detailsObj.gift_message,
+            detailsObj.gift_note,
+            detailsObj.giftNote,
+            detailsObj.cardMessage,
+            detailsObj.card_message,
+            detailsObj.greetingMessage,
+            detailsObj.greeting_message,
+            detailsObj.note,
+            itemObj.message,
+            itemObj.customMessage,
+            itemObj.custom_message,
+            itemObj.giftMessage,
+            itemObj.gift_message,
+            itemObj.gift_note,
+            itemObj.giftNote,
+            itemObj.cardMessage,
+            itemObj.card_message,
+            itemObj.note,
+            gBoxObj.message,
+            gBoxObj.customMessage,
+            gBoxObj.custom_message,
+            gBoxObj.giftMessage,
+            gBoxObj.gift_message,
+            gBoxObj.gift_note,
+            gBoxObj.giftNote,
+            gBoxObj.note,
+            itemObj._parentOrderMessage,
+            pObj.message,
+            pObj.customMessage,
+            pObj.giftMessage,
+          ];
+          for (const c of cands) {
+            if (typeof c === "string" && c.trim().length > 0) {
+              const val = c.trim();
+              if (!/^(success|ok|true|false|failed|error|order.*fetch|order.*create)$/i.test(val)) {
+                return val;
+              }
+            }
+          }
+          return "";
+        };
+
+        const extractProdMsgImage = (itemObj: any, detailsObj: any, gBoxObj: any): string => {
+          const cands = [
+            itemObj.messageImage,
+            itemObj.message_image,
+            itemObj.cardImage,
+            itemObj.card_image,
+            itemObj.giftCardImage,
+            itemObj.gift_card_image,
+            itemObj.customImage,
+            itemObj.custom_image,
+            itemObj.attachment,
+            itemObj.photo,
+            itemObj.gift_image,
+            itemObj.gift_box_image,
+            detailsObj.messageImage,
+            detailsObj.message_image,
+            detailsObj.cardImage,
+            detailsObj.card_image,
+            detailsObj.giftCardImage,
+            detailsObj.gift_card_image,
+            detailsObj.customImage,
+            detailsObj.custom_image,
+            detailsObj.attachment,
+            detailsObj.photo,
+            detailsObj.gift_image,
+            detailsObj.gift_box_image,
+            gBoxObj.cardImage,
+            gBoxObj.card_image,
+            gBoxObj.giftCardImage,
+            gBoxObj.gift_card_image,
+            gBoxObj.card_url,
+            gBoxObj.cardUrl,
+            gBoxObj.image,
+            gBoxObj.image_url,
+            itemObj.card?.image,
+            detailsObj.card?.image,
+            itemObj.greetingCard?.image,
+            detailsObj.greetingCard?.image,
+          ];
+          for (const c of cands) {
+            const url = extractImg(c);
+            if (url) return url;
+          }
+          return "";
+        };
+
+        let itemGiftMsg = extractProdMessage(p, pd, giftObj, prod);
+        if (!itemGiftMsg && rawProds.length === 1 && giftMsg) {
+          itemGiftMsg = giftMsg;
+        }
+
+        const itemMsgImage = extractProdMsgImage(p, pd, giftObj);
 
         return {
           name: pName,
@@ -766,6 +877,7 @@ export default function OrderDetails() {
           orderStatus: itemOrderStatus,
           isCancelled: isItemCancelled,
           giftMessage: itemGiftMsg,
+          messageImage: itemMsgImage,
         };
       });
       setProductList(parsedProds);
@@ -1683,7 +1795,7 @@ export default function OrderDetails() {
       head: [["#", "Product Name", "Variant", "Qty", "Price", "Total"]],
       body: invoiceProducts.map((p, idx) => [
         String(idx + 1),
-        p.name,
+        p.name + (p.giftMessage ? `\n[Gift Message: "${p.giftMessage}"]` : ""),
         p.variant || "-",
         String(p.qty),
         `Rs. ${p.price.toFixed(2)}`,
@@ -1774,28 +1886,16 @@ export default function OrderDetails() {
       currY += rowHeight;
     });
 
-    if (customerInfo.customerNote || customerInfo.giftMessage) {
+    if (customerInfo.customerNote) {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(8.5);
       doc.setTextColor(148, 163, 184);
       let noteY = finalY + 14;
-      if (customerInfo.customerNote) {
-        const noteLines: string[] = doc.splitTextToSize(`Note: "${customerInfo.customerNote}"`, 240);
-        noteLines.forEach((nLine: string) => {
-          doc.text(nLine, 40, noteY);
-          noteY += 12;
-        });
-      }
-      if (
-        customerInfo.giftMessage &&
-        customerInfo.giftMessage.toLowerCase() !== customerInfo.customerNote?.toLowerCase()
-      ) {
-        const giftLines: string[] = doc.splitTextToSize(`Gift Message: "${customerInfo.giftMessage}"`, 240);
-        giftLines.forEach((gLine: string) => {
-          doc.text(gLine, 40, noteY);
-          noteY += 12;
-        });
-      }
+      const noteLines: string[] = doc.splitTextToSize(`Note: "${customerInfo.customerNote}"`, 240);
+      noteLines.forEach((nLine: string) => {
+        doc.text(nLine, 40, noteY);
+        noteY += 12;
+      });
     }
 
     const pageCount = (doc as any).internal.getNumberOfPages();
@@ -2014,40 +2114,22 @@ export default function OrderDetails() {
               </div>
             </div>
 
-            {/* Customer Note & Gift Message cards */}
-            {(customerInfo.customerNote || customerInfo.giftMessage) && (
-              <div className="mt-5 space-y-3">
-                {customerInfo.customerNote && (
-                  <div className="bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
-                    <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
-                      <FileText size={20} className="stroke-[2.2]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
-                        CUSTOMER NOTE
-                      </h3>
-                      <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
-                        "{customerInfo.customerNote}"
-                      </p>
-                    </div>
+            {/* Customer Note card */}
+            {customerInfo.customerNote && (
+              <div className="mt-5">
+                <div className="bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
+                  <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
+                    <FileText size={20} className="stroke-[2.2]" />
                   </div>
-                )}
-
-                {customerInfo.giftMessage && (
-                  <div className="bg-[#FFFDF6] border border-amber-200/70 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm transition-all hover:shadow-md">
-                    <div className="p-2.5 rounded-xl bg-amber-100/70 text-[#D97706] shrink-0 mt-0.5">
-                      <Gift size={20} className="stroke-[2.2]" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
-                        GIFT MESSAGE
-                      </h3>
-                      <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
-                        "{customerInfo.giftMessage}"
-                      </p>
-                    </div>
+                  <div>
+                    <h3 className="text-xs font-extrabold text-[#9A3412] uppercase tracking-wider">
+                      CUSTOMER NOTE
+                    </h3>
+                    <p className="text-sm font-medium text-[#78350F] italic mt-1 leading-relaxed">
+                      "{customerInfo.customerNote}"
+                    </p>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
@@ -2196,12 +2278,12 @@ export default function OrderDetails() {
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-slate-50/70 border-y border-slate-100 text-slate-400 font-semibold">
-                    <th className="px-6 py-3 uppercase tracking-wider">Product</th>
-                    <th className="px-6 py-3 uppercase tracking-wider">Variant</th>
-                    <th className="px-6 py-3 uppercase tracking-wider">Quantity</th>
-                    <th className="px-6 py-3 uppercase tracking-wider">Price</th>
-                    <th className="px-6 py-3 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 uppercase tracking-wider">Total</th>
+                    <th className="px-4 py-3 uppercase tracking-wider">Product</th>
+                    <th className="px-3 py-3 uppercase tracking-wider text-center">Variant</th>
+                    <th className="px-3 py-3 uppercase tracking-wider text-center">Quantity</th>
+                    <th className="px-3 py-3 uppercase tracking-wider text-right">Price</th>
+                    <th className="px-3 py-3 uppercase tracking-wider text-center">Status</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -2213,39 +2295,89 @@ export default function OrderDetails() {
                         className={`transition-colors ${isCancelled ? "bg-rose-50/30 hover:bg-rose-50/50" : "hover:bg-slate-50/50"
                           }`}
                       >
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3.5 align-top">
                           <div className="flex items-start gap-3">
                             <div className="relative shrink-0">
-                              <img
-                                src={p.image}
-                                alt={p.name}
-                                className={`w-12 h-12 rounded-xl object-cover bg-amber-50 border border-amber-100 shadow-sm ${isCancelled ? "opacity-60 grayscale-[30%]" : ""
+                              <button
+                                type="button"
+                                onClick={() => setPreviewModalImage(p.image)}
+                                className="block focus:outline-none group relative rounded-xl overflow-hidden"
+                                title="Click to zoom product image"
+                              >
+                                <img
+                                  src={p.image}
+                                  alt={p.name}
+                                  className={`w-11 h-11 rounded-xl object-cover bg-amber-50 border border-amber-200/80 shadow-2xs group-hover:scale-105 group-hover:border-amber-400 transition-all ${
+                                    isCancelled ? "opacity-60 grayscale-[30%]" : ""
                                   }`}
-                              />
+                                />
+                                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center transition-opacity">
+                                  <Maximize2 size={12} className="text-white drop-shadow" />
+                                </div>
+                              </button>
                               {isCancelled && (
                                 <span className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow">
-                                  <X size={10} strokeWidth={3} />
+                                  <X size={9} strokeWidth={3} />
                                 </span>
                               )}
                             </div>
-                            <div className="min-w-0 flex flex-col justify-center">
+                            <div className="min-w-0 flex-1">
                               <p
-                                className={`font-bold text-sm leading-snug ${isCancelled ? "text-slate-500 line-through" : "text-slate-800"
-                                  }`}
+                                className={`font-bold text-xs sm:text-sm leading-snug ${
+                                  isCancelled ? "text-slate-500 line-through" : "text-slate-900"
+                                }`}
                               >
                                 {p.name}
                               </p>
+
+                              {/* Compact Gift Message Box */}
+                              {(p.giftMessage || p.messageImage) && (
+                                <div className="mt-1.5 inline-flex items-start gap-2 bg-[#FFFDF6] border border-amber-200/90 rounded-xl px-2.5 py-1.5 shadow-2xs max-w-full">
+                                  <div className="p-1 rounded-md bg-amber-100/90 text-[#D97706] shrink-0 mt-0.5">
+                                    <Gift size={12} className="stroke-[2.2]" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-[9px] font-extrabold text-[#9A3412] uppercase tracking-wider block whitespace-nowrap">
+                                      GIFT MESSAGE
+                                    </span>
+                                    {p.giftMessage && (
+                                      <p className="text-[11px] font-semibold text-[#78350F] italic mt-0.5 leading-tight whitespace-normal break-normal">
+                                        "{p.giftMessage}"
+                                      </p>
+                                    )}
+                                  </div>
+                                  {p.messageImage && (
+                                    <div className="shrink-0 flex items-center pl-1.5 border-l border-amber-200/80 ml-1">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPreviewModalImage(p.messageImage || null);
+                                        }}
+                                        className="group relative block rounded-md overflow-hidden border border-amber-300 shadow-2xs focus:outline-none"
+                                        title="Click to zoom image"
+                                      >
+                                        <img
+                                          src={p.messageImage}
+                                          alt="Gift Attachment"
+                                          className="w-6 h-6 object-cover group-hover:scale-105 transition-transform"
+                                        />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
-                          <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">
+                        <td className="px-3 py-3.5 align-top font-medium text-slate-600 whitespace-nowrap text-center">
+                          <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">
                             {p.variant}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-semibold text-slate-800 whitespace-nowrap">
+                        <td className="px-3 py-3.5 align-top font-semibold text-slate-800 whitespace-nowrap text-center">
                           <span
-                            className={`px-2.5 py-1 font-bold text-xs rounded-md ${isCancelled
+                            className={`px-2 py-0.5 font-bold text-xs rounded-md ${isCancelled
                               ? "bg-slate-100 text-slate-500 line-through"
                               : "bg-orange-50 text-orange-600"
                               }`}
@@ -2253,8 +2385,8 @@ export default function OrderDetails() {
                             Qty: {p.qty}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col">
+                        <td className="px-3 py-3.5 align-top whitespace-nowrap text-right">
+                          <div className="flex flex-col items-end">
                             <span
                               className={`font-semibold text-xs ${isCancelled ? "text-slate-400 line-through" : "text-slate-800"
                                 }`}
@@ -2268,23 +2400,23 @@ export default function OrderDetails() {
                             ) : null}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-3.5 align-top whitespace-nowrap text-center">
                           {isCancelled ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200/80 font-bold text-xs rounded-lg">
-                              <XCircle size={13} className="shrink-0 text-rose-600" />
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200/80 font-bold text-xs rounded-lg">
+                              <XCircle size={12} className="shrink-0 text-rose-600" />
                               Cancelled
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold text-xs rounded-lg">
-                              <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-bold text-xs rounded-lg">
+                              <CheckCircle2 size={12} className="shrink-0 text-emerald-600" />
                               {p.orderStatus
                                 ? p.orderStatus.charAt(0).toUpperCase() + p.orderStatus.slice(1)
                                 : "Active"}
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col">
+                        <td className="px-4 py-3.5 align-top whitespace-nowrap text-right">
+                          <div className="flex flex-col items-end">
                             <span
                               className={`font-bold text-sm ${isCancelled ? "text-slate-400 line-through" : "text-slate-900"
                                 }`}
@@ -2567,6 +2699,12 @@ export default function OrderDetails() {
                               <span>•</span>
                               <span className="font-bold text-slate-900">₹{(p.price * p.qty).toFixed(2)}</span>
                             </div>
+                            {p.giftMessage && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-amber-800 font-medium italic bg-amber-100/70 rounded-md px-2 py-0.5 mt-1 border border-amber-200/80">
+                                <Gift size={11} className="shrink-0 text-amber-600" />
+                                <span className="truncate">Gift: "{p.giftMessage}"</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2768,6 +2906,50 @@ export default function OrderDetails() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Full Size Image Preview Modal */}
+      {previewModalImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity animate-in fade-in duration-150"
+          onClick={() => setPreviewModalImage(null)}
+        >
+          <div
+            className="relative max-w-xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-5 flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between w-full pb-3 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Maximize2 size={13} className="text-amber-600" />
+                Image Preview
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewModalImage(null)}
+                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="my-4 max-h-[70vh] flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-100 w-full p-2">
+              <img
+                src={previewModalImage}
+                alt="Preview"
+                className="max-h-[66vh] max-w-full object-contain rounded-lg"
+              />
+            </div>
+            <div className="flex justify-between items-center w-full pt-1 text-xs">
+              <span className="text-slate-400">Click anywhere outside to close</span>
+              <a
+                href={previewModalImage}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-amber-600 hover:text-amber-700 hover:underline inline-flex items-center gap-1"
+              >
+                Open original in new tab →
+              </a>
             </div>
           </div>
         </div>
