@@ -22,6 +22,10 @@ import {
   Hash,
   Send,
   Package,
+  Clock,
+  Sparkles,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/auth";
 
@@ -70,6 +74,22 @@ export default function DetailedSubscribers() {
 
   // Toast message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Bulk Launch Email Modal States
+  const getTodayDateString = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(false);
+  const [launchDate, setLaunchDate] = useState<string>(getTodayDateString());
+  const [launchTime, setLaunchTime] = useState<string>("10:00");
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
+  const [emailModalError, setEmailModalError] = useState<string | null>(null);
+  const [emailModalSuccess, setEmailModalSuccess] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -236,6 +256,78 @@ export default function DetailedSubscribers() {
       .slice(0, 2);
   };
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isEmailModalOpen && !isSendingEmail) {
+        setIsEmailModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEmailModalOpen, isSendingEmail]);
+
+  // Send Bulk Launch Email API Handler
+  const handleSendBulkEmail = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!launchDate || !launchTime) {
+      setEmailModalError("Please provide both launch date and time.");
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailModalError(null);
+    setEmailModalSuccess(null);
+
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("admin_token") || localStorage.getItem("sudhveda_token")
+          : null;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/subscribe/subscribers/launch-email`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          launch_date: launchDate,
+          time: launchTime,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message || `Failed to send launch email (Status: ${response.status})`
+        );
+      }
+
+      const successMsg = data?.message || "Bulk launch email sent successfully!";
+      setEmailModalSuccess(successMsg);
+      showToast(successMsg);
+
+      // Close modal after showing success
+      setTimeout(() => {
+        setIsEmailModalOpen(false);
+        setEmailModalSuccess(null);
+      }, 1600);
+    } catch (err: any) {
+      console.error("Error sending bulk launch email:", err);
+      setEmailModalError(err.message || "Failed to send launch email. Please try again.");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Toast Alert */}
@@ -278,6 +370,18 @@ export default function DetailedSubscribers() {
             >
               <Download size={16} />
               <span>Export CSV</span>
+            </button>
+            <button
+              onClick={() => {
+                setEmailModalError(null);
+                setEmailModalSuccess(null);
+                setIsEmailModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer border border-emerald-400/30"
+              title="Send launch email to all subscribers"
+            >
+              <Send size={16} />
+              <span>Send Email</span>
             </button>
           </div>
         </div>
@@ -683,6 +787,140 @@ export default function DetailedSubscribers() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Bulk Email Send Modal */}
+      {isEmailModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSendingEmail) {
+              setIsEmailModalOpen(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-gray-100 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-600 via-orange-500 to-amber-700 p-6 text-white relative">
+              <button
+                type="button"
+                onClick={() => !isSendingEmail && setIsEmailModalOpen(false)}
+                disabled={isSendingEmail}
+                className="absolute top-4 right-4 text-white/80 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
+                title="Close"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shrink-0 shadow-inner">
+                  <Send size={22} />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 bg-white/20 px-2.5 py-0.5 rounded-full text-[11px] font-semibold tracking-wide uppercase text-amber-100 mb-1">
+                    <Sparkles size={12} />
+                    <span>Launch Announcement</span>
+                  </div>
+                  <h3 className="text-xl font-bold tracking-tight">Bulk Email Send</h3>
+                </div>
+              </div>
+              <p className="text-amber-100 text-xs mt-2 leading-relaxed">
+                Send launch announcement email to all subscribed users with the configured launch date and time.
+              </p>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSendBulkEmail} className="p-6 space-y-4">
+              {/* Form Inputs */}
+              <div className="space-y-3.5">
+                {/* Launch Date */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Launch Date <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <Calendar size={16} />
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={launchDate}
+                      onChange={(e) => setLaunchDate(e.target.value)}
+                      disabled={isSendingEmail}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50/80 border border-gray-200 rounded-xl text-sm font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1 pl-1">Format: YYYY-MM-DD (e.g. 2028-10-30)</p>
+                </div>
+
+                {/* Launch Time */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Launch Time <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <Clock size={16} />
+                    </div>
+                    <input
+                      type="time"
+                      required
+                      value={launchTime}
+                      onChange={(e) => setLaunchTime(e.target.value)}
+                      disabled={isSendingEmail}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50/80 border border-gray-200 rounded-xl text-sm font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1 pl-1">Format: HH:mm (e.g. 10:00)</p>
+                </div>
+              </div>
+
+              {/* Status messages */}
+              {emailModalError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0 text-red-500" />
+                  <span>{emailModalError}</span>
+                </div>
+              )}
+
+              {emailModalSuccess && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-2">
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+                  <span>{emailModalSuccess}</span>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEmailModalOpen(false)}
+                  disabled={isSendingEmail}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 text-sm font-medium transition-all cursor-pointer disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingEmail || !launchDate || !launchTime}
+                  className="flex items-center gap-2 bg-gradient-to-r from-amber-600 via-orange-500 to-amber-700 hover:opacity-95 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer active:scale-95"
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Sending Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      <span>Send Email</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
